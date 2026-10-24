@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#101113">
+  <title>DSH Gateway · Admin</title>
+  <link rel="icon" href="/mobile/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/mobile/assets/admin.css?v=31">
+</head>
+<body class="app-body">
+  <svg class="svg-sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 3h7v7"/><path d="M21 3 10 14"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m6 4 14 8-14 8z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+    <symbol id="i-refresh-cw" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+    <symbol id="i-panel-left" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h8M16 7h4M4 17h4M12 17h8"/><circle cx="14" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="app-sidebar">
+      <div class="app-brand">
+        <button class="brand-mark" id="brand-toggle" type="button" aria-label="收起侧栏" title="收起侧栏"><span class="app-logo">D</span></button>
+        <div class="app-brand-text"><strong>DSH Gateway</strong><small>Mobile access</small></div>
+        <button class="icon-button sidebar-collapse" id="sidebar-toggle" type="button" aria-label="收起侧栏" title="收起侧栏"><svg class="icon"><use href="#i-panel-left"/></svg></button>
+      </div>
+
+      <nav class="app-nav" aria-label="管理分区">
+        <button class="tab active" data-tab="overview" data-label="概览" title="概览"><svg class="icon"><use href="#i-grid"/></svg><span>概览</span></button>
+        <button class="tab" data-tab="pair" data-label="配对" title="配对"><svg class="icon"><use href="#i-link"/></svg><span>配对</span></button>
+        <button class="tab" data-tab="devices" data-label="设备" title="设备"><svg class="icon"><use href="#i-phone"/></svg><span>设备</span></button>
+        <button class="tab" data-tab="logs" data-label="日志" title="日志"><svg class="icon"><use href="#i-list"/></svg><span>日志</span></button>
+        <button class="tab" data-tab="settings" data-label="设置" title="设置"><svg class="icon"><use href="#i-settings"/></svg><span>设置</span></button>
+      </nav>
+
+      <div class="app-sidebar-footer">
+        <a class="side-link" href="/mobile/shell"><svg class="icon"><use href="#i-external"/></svg><span>打开 DSH</span></a>
+        <div class="side-meta">仅本机可访问</div>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <header class="app-topbar">
+        <div class="app-topbar-left">
+          <div class="app-heading">
+            <h1 id="page-title">概览</h1>
+            <p id="page-desc">网关与隧道运行状态</p>
+          </div>
+        </div>
+        <div class="app-topbar-actions">
+          <span class="status-pill" id="link-status"><span class="dot"></span><span id="link-text">检查中</span></span>
+          <button class="icon-button" id="theme-toggle" aria-label="切换主题"><svg class="icon"><use href="#i-sun"/></svg></button>
+          <button class="icon-button" id="refresh" aria-label="刷新"><svg class="icon"><use href="#i-refresh"/></svg></button>
+        </div>
+      </header>
+
+      <main class="app-content">
+        <!-- Overview -->
+        <section class="tab-panel active" data-panel="overview" role="tabpanel">
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-top"><span class="kpi-label">可用设备</span><span class="kpi-icon"><svg class="icon"><use href="#i-phone"/></svg></span></div><strong class="kpi-value" id="metric-active">-</strong><span class="kpi-foot" id="metric-active-foot">已授权且未撤销</span></div>
+            <div class="kpi"><div class="kpi-top"><span class="kpi-label">在线设备</span><span class="kpi-icon"><svg class="icon"><use href="#i-grid"/></svg></span></div><strong class="kpi-value" id="metric-online">-</strong><span class="kpi-foot">当前 WebSocket</span></div>
+            <div class="kpi"><div class="kpi-top"><span class="kpi-label">今日请求</span><span class="kpi-icon"><svg class="icon"><use href="#i-list"/></svg></span></div><strong class="kpi-value" id="metric-today">-</strong><span class="kpi-foot">按天聚合</span></div>
+            <div class="kpi"><div class="kpi-top"><span class="kpi-label">网关版本</span><span class="kpi-icon"><svg class="icon"><use href="#i-refresh-cw"/></svg></span></div><strong class="kpi-value" id="metric-version">-</strong><span class="kpi-foot">dsh-gateway-mobile</span></div>
+          </div>
+
+          <div class="dashboard-grid">
+            <div class="panel">
+              <div class="panel-head">
+                <div class="panel-title"><span class="eyebrow">TUNNEL</span><h2>链路状态</h2></div>
+                <span class="status-pill" id="tunnel-chip"><span class="dot"></span><span id="tunnel-chip-text">-</span></span>
+              </div>
+              <div class="panel-body">
+                <dl class="data-list">
+                  <div><dt>公网地址</dt><dd class="url-line"><span class="mono" id="tunnel-url">-</span><button class="copy-inline" id="copy-url" aria-label="复制公网地址"><svg class="icon"><use href="#i-copy"/></svg></button></dd></div>
+                  <div><dt>协议</dt><dd id="tunnel-meta">-</dd></div>
+                  <div><dt>运行时长</dt><dd id="tunnel-uptime">-</dd></div>
+                </dl>
+                <div class="panel-actions">
+                  <button class="button" id="tunnel-start"><svg class="icon"><use href="#i-play"/></svg>启动</button>
+                  <button class="button primary" id="tunnel-restart"><svg class="icon"><use href="#i-refresh-cw"/></svg>重启</button>
+                  <button class="button danger" id="tunnel-stop"><svg class="icon"><use href="#i-stop"/></svg>停止</button>
+                </div>
+                <p class="hint" id="tunnel-hint"></p>
+              </div>
+            </div>
+
+            <div class="panel quick-panel">
+              <div class="panel-head"><div class="panel-title"><span class="eyebrow">QUICK ACTIONS</span><h2>快捷操作</h2></div></div>
+              <div class="panel-body quick-actions">
+                <button class="quick-action" id="go-pair">
+                  <span class="quick-icon"><svg class="icon"><use href="#i-plus"/></svg></span>
+                  <span><strong>添加设备</strong><small>生成新配对码 / 二维码</small></span>
+                </button>
+                <a class="quick-action" href="/mobile/shell">
+                  <span class="quick-icon"><svg class="icon"><use href="#i-external"/></svg></span>
+                  <span><strong>打开 DSH</strong><small>进入官方 Web UI</small></span>
+                </a>
+                <div class="callout">管理页只在电脑本机可访问。Quick Tunnel 重启后域名会变化，手机需重新配对。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <div class="panel">
+              <div class="panel-head">
+                <div class="panel-title"><span class="eyebrow">ACTIVITY</span><h2>最近 7 天请求</h2><p class="panel-sub">按天统计 · 单位：次</p></div>
+                <span class="badge" id="chart-total">-</span>
+              </div>
+              <div class="panel-body">
+                <div class="chart-meta">
+                  <span id="chart-summary">总计 - · 日均 - · 峰值 -</span>
+                  <span class="chart-unit">悬停查看每日数量</span>
+                </div>
+                <div class="chart-body">
+                  <div class="chart-y" id="chart-y" aria-hidden="true"></div>
+                  <div class="chart-wrap">
+                    <div class="spark" id="spark" aria-label="近 7 天请求趋势"></div>
+                    <div class="chart-tip" id="chart-tip" hidden></div>
+                  </div>
+                </div>
+                <div class="spark-labels" id="spark-labels"></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head">
+                <div class="panel-title"><span class="eyebrow">RECENT</span><h2>最近日志</h2></div>
+                <button class="text-button" id="go-logs">查看全部</button>
+              </div>
+              <div class="panel-body">
+                <div class="log-preview" id="log-preview"><p class="muted">加载中…</p></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pairing -->
+        <section class="tab-panel" data-panel="pair" role="tabpanel">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title"><span class="eyebrow">PAIR A DEVICE</span><h2>扫码配对</h2></div>
+              <span class="badge" id="pair-expiry">-</span>
+            </div>
+            <div class="panel-body pair-layout">
+              <div class="qr" id="qr"></div>
+              <div class="pair-side">
+                <div class="code-display" id="pairing-code">----</div>
+                <div class="progress"><span id="pair-progress"></span></div>
+                <p class="muted">手机用浏览器扫描二维码，或打开下方链接后输入配对码。</p>
+                <p class="url mono" id="pairing-url"></p>
+                <div class="panel-actions">
+                  <button class="button" id="copy"><svg class="icon"><use href="#i-copy"/></svg>复制链接</button>
+                  <button class="button primary" id="regenerate">重新生成</button>
+                </div>
+                <p class="hint" id="pair-hint"></p>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title"><h2>配对说明</h2></div></div>
+            <div class="panel-body">
+              <ol class="steps">
+                <li>确保手机与电脑能访问同一个隧道地址。</li>
+                <li>扫码后输入 8 位配对码（一次性、默认 15 分钟有效）。</li>
+                <li>配对成功后，可在“设备”页重命名或撤销该设备。</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        <!-- Devices -->
+        <section class="tab-panel" data-panel="devices" role="tabpanel">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title"><span class="eyebrow">DEVICES</span><h2>已授权设备</h2><p class="panel-sub">在线设备优先 · 勾选可批量撤销 · 已撤销记录可永久删除</p></div>
+              <button class="text-button" id="refresh-devices">刷新</button>
+            </div>
+            <div class="panel-body">
+              <div class="device-toolbar">
+                <div class="device-filters" id="device-filters" role="group" aria-label="设备筛选">
+                  <button class="filter-chip active" type="button" data-filter="all" aria-pressed="true">全部 <b id="filter-count-all">0</b></button>
+                  <button class="filter-chip" type="button" data-filter="online" aria-pressed="false"><span class="dot ok"></span>在线 <b id="filter-count-online">0</b></button>
+                  <button class="filter-chip" type="button" data-filter="offline" aria-pressed="false">离线 <b id="filter-count-offline">0</b></button>
+                  <button class="filter-chip" type="button" data-filter="revoked" aria-pressed="false">已撤销 <b id="filter-count-revoked">0</b></button>
+                </div>
+                <div class="device-batch">
+                  <button class="text-button" id="device-select-all" type="button">全选</button>
+                  <button class="text-button danger" id="device-purge" type="button" hidden>清理已撤销</button>
+                  <button class="button danger" id="batch-revoke" type="button" disabled>撤销所选</button>
+                  <button class="button danger" id="batch-delete" type="button" hidden>永久删除</button>
+                </div>
+              </div>
+              <div class="device-table" id="device-table">
+                <div class="device-table-head">
+                  <label class="device-select"><input type="checkbox" id="device-select-all-head" aria-label="全选设备"></label>
+                  <span>设备</span><span>状态</span><span>最近活跃</span><span>IP 地址</span><span>操作</span>
+                </div>
+                <div class="device-list" id="device-list"><p class="muted">加载中…</p></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Logs -->
+        <section class="tab-panel" data-panel="logs" role="tabpanel">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title"><span class="eyebrow">AUDIT</span><h2>运行日志</h2><p class="panel-sub">最近的运行与审计事件</p></div>
+              <button class="text-button" id="refresh-logs">刷新</button>
+            </div>
+            <div class="panel-body">
+              <div class="log-toolbar">
+                <div class="log-filters" id="log-filters" role="group" aria-label="日志级别">
+                  <button class="filter-chip active" type="button" data-level="info" aria-pressed="true">信息</button>
+                  <button class="filter-chip" type="button" data-level="warn" aria-pressed="false">警告</button>
+                  <button class="filter-chip" type="button" data-level="error" aria-pressed="false">错误</button>
+                  <button class="filter-chip" type="button" data-level="audit" aria-pressed="false">审计</button>
+                  <button class="filter-chip" type="button" data-level="all" aria-pressed="false">全部</button>
+                </div>
+                <input class="log-search" id="log-search" type="search" placeholder="搜索日志…" autocomplete="off" spellcheck="false" aria-label="搜索日志">
+                <label class="switch"><input type="checkbox" id="log-auto"><span>自动刷新</span></label>
+              </div>
+              <div class="log-meta" id="log-meta">加载中…</div>
+              <div class="log-list" id="log-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Settings -->
+        <section class="tab-panel" data-panel="settings" role="tabpanel">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title"><span class="eyebrow">SETTINGS</span><h2>管理设置</h2><p class="panel-sub">修改后立即生效，并写入本机 settings 文件</p></div>
+            </div>
+            <div class="panel-body">
+              <div class="settings-notice" id="settings-notice" hidden></div>
+              <form class="settings-form" id="settings-form">
+                <div class="settings-grid">
+                  <label class="field">
+                    <span>登录会话时长</span>
+                    <div class="input-group">
+                      <input id="setting-session-days" type="number" min="0.0035" max="90" step="any" value="1" required>
+                      <span class="input-unit">天</span>
+                    </div>
+                    <small class="field-hint" id="hint-session">允许 5 分钟 – 90 天</small>
+                    <small class="field-error" id="error-session"></small>
+                    <small>生效中：<b id="current-session">1 天</b></small>
+                  </label>
+                  <label class="field">
+                    <span>配对码有效期</span>
+                    <div class="input-group">
+                      <input id="setting-pairing-minutes" type="number" min="1" max="1440" step="1" value="15" required>
+                      <span class="input-unit">分钟</span>
+                    </div>
+                    <small class="field-hint" id="hint-pairing">允许 30 秒 – 24 小时</small>
+                    <small class="field-error" id="error-pairing"></small>
+                    <small>生效中：<b id="current-pairing">15 分钟</b></small>
+                  </label>
+                </div>
+                <p class="hint">保存后新签发的 Cookie 立即使用新时长；已有设备会在滑动续期时更新。修改配对码有效期会重新生成当前配对码。</p>
+                <div class="panel-actions settings-actions">
+                  <button class="button primary" id="save-settings" type="button">保存设置</button>
+                  <button class="button" id="reset-settings" type="button">恢复默认</button>
+                  <span class="settings-status" id="settings-status" role="status"></span>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <nav class="app-bottom-nav" aria-label="管理分区">
+    <button class="tab active" data-tab="overview"><svg class="icon"><use href="#i-grid"/></svg><span>概览</span></button>
+    <button class="tab" data-tab="pair"><svg class="icon"><use href="#i-link"/></svg><span>配对</span></button>
+    <button class="tab" data-tab="devices"><svg class="icon"><use href="#i-phone"/></svg><span>设备</span></button>
+    <button class="tab" data-tab="logs"><svg class="icon"><use href="#i-list"/></svg><span>日志</span></button>
+    <button class="tab" data-tab="settings"><svg class="icon"><use href="#i-settings"/></svg><span>设置</span></button>
+  </nav>
+
+  <dialog class="modal" id="modal">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow" id="modal-eyebrow">DEVICE</span>
+          <h3 id="modal-title">设备</h3>
+        </div>
+        <button class="icon-button" id="modal-close" type="button" aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions">
+        <button class="button" id="modal-cancel" type="button">取消</button>
+        <button class="button primary" id="modal-confirm" type="button">确定</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module" src="/mobile/assets/admin.js?v=34"></script>
+</body>
+</html>

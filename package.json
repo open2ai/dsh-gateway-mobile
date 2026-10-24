@@ -1,0 +1,60 @@
+{
+  "name": "dsh-gateway-mobile",
+  "version": "0.1.0",
+  "description": "Secure mobile access gateway for DSH: Cloudflare Quick Tunnel + one-time pairing + device-scoped auth + HTTP/WebSocket reverse proxy.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "web",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "CHANGELOG.zh.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.1-rc.2 <0.3.0",
+    "node": ">=22"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "scripts": {
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc -p tsconfig.json",
+    "build:web": "node scripts/build-web.mjs",
+    "typecheck": "npm run typecheck:server && npm run typecheck:web",
+    "typecheck:server": "tsc -p tsconfig.json --noEmit",
+    "typecheck:web": "tsc -p web/tsconfig.json",
+    "test": "npm run build && node --test test/*.test.js",
+    "test:integration": "npm run build && node scripts/integration-check.mjs",
+    "admin": "node scripts/open-admin.mjs",
+    "pack": "npm run build && node scripts/pack.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "cloudflare-tunnel",
+    "mobile",
+    "remote-access"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/qrcode": "^1.5.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "ws": "^8.22.0"
+  }
+}

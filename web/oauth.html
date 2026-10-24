@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#101113">
+  <title>DSH Gateway · Account</title>
+  <link rel="icon" href="/mobile/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/mobile/assets/app.css?v=10">
+</head>
+<body>
+  <header class="topbar">
+    <a class="icon-btn" href="/mobile/" aria-label="Back"><svg class="icon"><use href="#i-arrow-left"/></svg></a>
+    <span class="brand" data-i18n="oauthTitle">绑定账号</span>
+    <span class="spacer"></span>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换主题">
+      <svg class="icon"><use href="#i-sun"/></svg>
+    </button>
+  </header>
+  <main class="wrap">
+    <div class="card">
+      <p class="muted" data-i18n="oauthHint">绑定 GitHub / Gitee 作为第二层身份确认（可选）</p>
+      <div class="list" id="providers"></div>
+      <p class="muted" id="empty" hidden></p>
+      <p class="error" id="error" role="alert"></p>
+      <div class="actions">
+        <button id="skip" class="btn secondary" data-i18n="skip">跳过，稍后绑定</button>
+      </div>
+    </div>
+  </main>
+  <footer>DSH Gateway Mobile</footer>
+  <script type="module" src="/mobile/assets/oauth.js?v=7"></script>
+</body>
+</html>

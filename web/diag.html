@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#101113">
+  <title>DSH Gateway · Diagnostics</title>
+  <link rel="icon" href="/mobile/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/mobile/assets/app.css?v=10">
+</head>
+<body>
+  <header class="topbar">
+    <a class="icon-btn" href="/mobile/" aria-label="Back"><svg class="icon"><use href="#i-arrow-left"/></svg></a>
+    <span class="brand" data-i18n="diagTitle">连接诊断</span>
+    <span class="spacer"></span>
+    <button id="run" class="icon-btn" type="button" aria-label="Run"><svg class="icon"><use href="#i-refresh"/></svg></button>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换主题">
+      <svg class="icon"><use href="#i-sun"/></svg>
+    </button>
+  </header>
+  <main class="wrap">
+    <div class="card">
+      <h2 data-i18n="diagEnv">环境</h2>
+      <div class="row"><span class="label" data-i18n="diagAddress">当前地址</span><span class="value" id="url">-</span></div>
+      <div class="row"><span class="label" data-i18n="diagSecure">安全上下文</span><span class="value" id="secure">-</span></div>
+      <details class="ua">
+        <summary data-i18n="diagShowUa">查看 User-Agent</summary>
+        <pre id="ua">-</pre>
+      </details>
+    </div>
+    <div class="card">
+      <h2 data-i18n="diagHttp">HTTP</h2>
+      <div class="row"><span class="label">/health</span><span class="value" id="health">-</span></div>
+      <div class="row"><span class="label">/status</span><span class="value" id="status">-</span></div>
+      <div class="row"><span class="label" data-i18n="diagTunnel">隧道</span><span class="value" id="tunnel">-</span></div>
+    </div>
+    <div class="card">
+      <h2 data-i18n="diagWs">WebSocket（/api/remote.mux）</h2>
+      <div class="row"><span class="label" data-i18n="diagHandshake">握手</span><span class="value" id="ws-open">-</span></div>
+      <div class="row"><span class="label" data-i18n="diagReady">$events ready</span><span class="value" id="ws-ready">-</span></div>
+      <div class="row"><span class="label" data-i18n="diagCloseCode">关闭码</span><span class="value" id="ws-close">-</span></div>
+      <div class="row"><span class="label" data-i18n="diagDuration">耗时</span><span class="value" id="ws-time">-</span></div>
+      <p class="hint" id="ws-error"></p>
+    </div>
+    <div class="card">
+      <h2 data-i18n="diagResult">结果</h2>
+      <pre class="tiny" id="log"></pre>
+    </div>
+  </main>
+  <footer>DSH Gateway Mobile</footer>
+  <script type="module" src="/mobile/assets/diag.js?v=7"></script>
+</body>
+</html>

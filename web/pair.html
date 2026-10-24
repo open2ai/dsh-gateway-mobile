@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#101113">
+  <title>DSH Gateway · Pair</title>
+  <link rel="manifest" href="/mobile/manifest.webmanifest">
+  <link rel="icon" href="/mobile/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/mobile/assets/pair.css?v=10">
+</head>
+<body class="pair-body">
+  <div class="pair-glow" aria-hidden="true"></div>
+
+  <main class="pair-main">
+    <section class="pair-card">
+      <div class="pair-hero">
+        <h1 data-i18n="pairTitle">配对你的手机</h1>
+        <p class="pair-sub" data-i18n="pairHint">扫描电脑上显示的二维码，或输入 8 位配对码</p>
+      </div>
+
+      <label class="pair-label" for="pairing-code" data-i18n="pairCode">配对码</label>
+      <div class="pair-code-shell">
+        <input id="pairing-code" class="pair-code" inputmode="text" autocomplete="one-time-code"
+               autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="XXXX-XXXX"
+               aria-label="Pairing code">
+      </div>
+      <div class="pair-expiry"><span class="pair-expiry-dot"></span><span id="expiry"></span></div>
+
+      <label class="pair-label" for="device-name" data-i18n="pairDeviceName">设备名称（可选）</label>
+      <input id="device-name" class="pair-input" maxlength="48" placeholder="我的手机">
+
+      <div class="pair-error" id="error" role="alert"></div>
+
+      <button id="confirm" class="pair-submit" data-i18n="pairConfirm">确认配对</button>
+      <p class="pair-help"><a href="/mobile/diag" data-i18n="pairTrouble">连不上？打开连接诊断</a></p>
+    </section>
+  </main>
+
+  <div class="pair-success" id="pair-success" hidden role="status" aria-live="polite">
+    <div class="pair-success-card">
+      <h2 data-i18n="pairSuccess">配对成功</h2>
+      <p data-i18n="pairSuccessHint">正在进入 DSH…</p>
+      <div class="pair-success-progress"><span></span></div>
+    </div>
+  </div>
+
+  <script type="module" src="/mobile/assets/pair.js?v=8"></script>
+</body>
+</html>

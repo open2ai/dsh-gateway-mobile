@@ -1,0 +1,24 @@
+# dsh-gateway-mobile bundle patch — mounted by `dsh plugin --profile <name> add <this dir>`.
+#
+# The gateway runs beside DSH: cloudflared points at the gateway port, the
+# gateway authenticates paired devices and proxies to DSH's loopback origin.
+# DSH itself keeps listening on 127.0.0.1:3080 and never gains a public port.
+- insert:
+    - id: gateway-mobile
+      name: 'dsh-gateway-mobile'
+      config:
+        gateway:
+          # Loopback only. cloudflared connects to this port.
+          host: '127.0.0.1'
+          port: 3081
+        tunnel:
+          # Quick Tunnel is enabled by default (zero-config). Set false when
+          # you front the gateway with your own reverse proxy / Named Tunnel.
+          enabled: true
+          mode: 'quick'
+          protocol: 'http2'
+        auth:
+          pairingTokenExpiry: 900
+          sessionMaxAge: 86400
+        proxy:
+          maxRequestSize: 10485760

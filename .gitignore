@@ -1,0 +1,13 @@
+node_modules/
+.cache/
+.dsh-it/
+dist/
+lib/
+web/assets/*.js
+*.log
+*.tgz
+*.zip
+.env
+.DS_Store
+tmp/
+pre_docs1/

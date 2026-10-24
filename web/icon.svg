@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DSH Gateway">
+  <rect width="64" height="64" rx="14" fill="#0D0D0F"/>
+  <rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#4F8FFF" stroke-opacity="0.45" stroke-width="2"/>
+  <path d="M18 22h12v8H26v4h8v8H18v-8h4v-4h-4z" fill="#4F8FFF"/>
+  <path d="M34 22h12v8h-4v4h4v8H34v-8h4v-4h-4z" fill="#34D399" fill-opacity="0.9"/>
+</svg>

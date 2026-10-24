@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#101113">
+  <title>DSH Gateway</title>
+  <link rel="manifest" href="/mobile/manifest.webmanifest">
+  <link rel="icon" href="/mobile/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/mobile/assets/app.css?v=10">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand" data-i18n="appName">DSH 网关</span>
+    <span class="spacer"></span>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换主题">
+      <svg class="icon"><use href="#i-sun"/></svg>
+    </button>
+  </header>
+  <main class="wrap">
+    <div class="card">
+      <h2 data-i18n="statusTitle">网关状态</h2>
+      <div class="row">
+        <span class="label"><span id="tunnel-dot" class="dot"></span><span data-i18n="tunnelPublic">公网隧道</span></span>
+        <span class="value" id="tunnel-state">-</span>
+      </div>
+      <div class="row"><span class="label" data-i18n="gatewayLocal">本机网关</span><span class="value" id="gateway-state">-</span></div>
+      <div class="row"><span class="label" data-i18n="device">当前设备</span><span class="value" id="device-name">-</span></div>
+      <p class="url" id="public-url"></p>
+    </div>
+
+    <div class="actions actions-grid">
+      <button id="open-dsh" class="btn primary" data-i18n="openDsh">打开 DSH</button>
+      <a class="btn secondary" href="/mobile/devices" data-i18n="devices">设备管理</a>
+      <a class="btn secondary" href="/mobile/oauth" data-i18n="oauth">账号绑定</a>
+      <a class="btn secondary" href="/mobile/diag" data-i18n="diagTitle">连接诊断</a>
+      <button id="logout" class="btn danger" data-i18n="logout">退出</button>
+    </div>
+  </main>
+  <footer><span id="version-foot">DSH Gateway Mobile</span></footer>
+  <script type="module" src="/mobile/assets/app.js?v=7"></script>
+</body>
+</html>

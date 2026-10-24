@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#101113">
+  <title>DSH</title>
+  <link rel="manifest" href="/mobile/manifest.webmanifest">
+  <link rel="icon" href="/mobile/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/mobile/assets/app.css?v=10">
+</head>
+<body class="shell-body">
+  <header class="topbar">
+    <a class="icon-btn" href="/mobile/" aria-label="Back"><svg class="icon"><use href="#i-arrow-left"/></svg></a>
+    <span class="brand">DSH</span>
+    <span class="spacer"></span>
+    <span id="status" class="badge">…</span>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换主题">
+      <svg class="icon"><use href="#i-sun"/></svg>
+    </button>
+  </header>
+  <div class="shell-loading" id="loading">
+    <div class="shell-spinner"></div>
+    <span data-i18n="loading">加载中…</span>
+  </div>
+  <iframe id="frame" class="shell-frame" src="/" title="DSH Web UI"
+          allow="microphone; clipboard-read; clipboard-write; camera"></iframe>
+  <script type="module" src="/mobile/assets/shell.js?v=7"></script>
+</body>
+</html>
