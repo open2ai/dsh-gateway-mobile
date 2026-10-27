@@ -2,7 +2,7 @@ import { $, $$, api, applyI18n, el, formatTime, setText, toast } from './common'
 
 applyI18n()
 
-type TabName = 'overview' | 'pair' | 'devices' | 'logs' | 'settings'
+type TabName = 'overview' | 'pair' | 'weixin' | 'devices' | 'logs' | 'settings'
 type DeviceFilter = 'all' | 'online' | 'offline' | 'revoked'
 
 interface TunnelInfo {
@@ -72,6 +72,38 @@ interface SettingsPayload {
   limits?: SettingsLimits
 }
 
+interface WeixinPayload {
+  enabled: boolean
+  connected: boolean
+  state: 'idle' | 'wait' | 'scaned' | 'pending' | 'confirmed' | 'expired' | 'error'
+  qrcode?: string
+  qrUrl?: string
+  qrSvg?: string
+  accountId?: string
+  pendingUserId?: string
+  lastError?: string
+  cursor?: string
+  received?: number
+}
+
+interface WeixinNotifyPayload {
+  enabled: boolean
+  debounceMs: number
+  perSessionIntervalMs: number
+  globalIntervalMs: number
+  maxPerHour: number
+  recent: Array<{ at: number; count: number; text: string }>
+}
+
+interface WeixinApprovalEntry {
+  at: number
+  id: string
+  sessionId: string
+  toolName: string
+  reason: string
+  status: 'pending' | 'allowed' | 'rejected' | 'timeout' | 'cancelled' | 'unavailable'
+}
+
 interface SettingsLimits {
   sessionMin: number
   sessionMax: number
@@ -131,9 +163,10 @@ function isDeleteUnsupported(error: unknown): boolean {
 const PAGE_META: Record<TabName, [string, string]> = {
   overview: ['概览', '网关与隧道运行状态'],
   pair: ['配对', '添加一台新的移动设备'],
+  weixin: ['微信', 'ClawBot/iLink 扫码连接与运行状态'],
   devices: ['设备', '在线设备优先显示，可批量撤销或永久删除记录'],
   logs: ['日志', '最近的运行与审计事件'],
-  settings: ['设置', '登录会话与配对码有效期'],
+  settings: ['设置', '配对码、设备登录与微信推送'],
 }
 
 function setChip(id: string, text: string, ok: unknown): void {
@@ -186,6 +219,11 @@ function createTabController(): (name: TabName) => void {
     if (name === 'devices') void loadDevices()
     if (name === 'logs') void loadLogs()
     if (name === 'settings') void loadSettings()
+    if (name === 'settings') void loadWeixinNotify()
+    if (name === 'weixin') void loadWeixinStatus()
+    if (name === 'weixin') void loadWeixinNotify()
+    if (name === 'weixin') void loadWeixinApprovals()
+    if (name !== 'weixin') clearWeixinPoll()
     if (name === 'overview') void loadOverview()
   }
   for (const tab of tabs) tab.addEventListener('click', () => activate(tab.dataset.tab as TabName))
@@ -199,7 +237,7 @@ function updateHash(name: string): void {
 function bindHash(): void {
   window.addEventListener('hashchange', () => {
     const name = location.hash.slice(1)
-    if (['overview', 'pair', 'devices', 'logs', 'settings'].includes(name)) activate(name as TabName)
+    if (['overview', 'pair', 'weixin', 'devices', 'logs', 'settings'].includes(name)) activate(name as TabName)
   })
 }
 
@@ -219,7 +257,6 @@ async function loadOverview(): Promise<void> {
     state.logs = logs.logs ?? []
     const tunnel = status.tunnel ?? {}
     const connected = Boolean(tunnel.connected)
-    setChip('link-status', connected ? '已连接' : '未连接', connected)
     const startButton = $<HTMLButtonElement>('#tunnel-start')
     const stopButton = $<HTMLButtonElement>('#tunnel-stop')
     const starting = tunnel.state === 'starting'
@@ -247,7 +284,27 @@ async function loadOverview(): Promise<void> {
     setText('#metric-version', status.gateway?.version || '-')
     renderSpark(stats)
     renderLogPreview()
-    setChip('link-status', connected ? '已连接' : '未连接', connected)
+    try {
+      const wx = await api<WeixinPayload>('/mobile/api/v1/admin/weixin')
+      const received = typeof wx.received === 'number' ? `${wx.received} 条` : '-'
+      if (!wx.enabled) {
+        setChip('overview-weixin-chip', '未启用', false)
+        setText('#overview-weixin-account', '微信通道未启用')
+        setText('#overview-weixin-received', '-')
+      } else if (wx.connected) {
+        setChip('overview-weixin-chip', '已连接', true)
+        setText('#overview-weixin-account', wx.accountId ? `Bot：${wx.accountId}` : '微信 Bot 已连接')
+        setText('#overview-weixin-received', received)
+      } else {
+        setChip('overview-weixin-chip', '未连接', false)
+        setText('#overview-weixin-account', '微信 Bot 未连接')
+        setText('#overview-weixin-received', '-')
+      }
+    } catch {
+      setChip('overview-weixin-chip', '不可用', false)
+      setText('#overview-weixin-account', '当前网关未加载微信接口')
+      setText('#overview-weixin-received', '-')
+    }
   } catch (error) {
     const message = errorMessage(error) || '加载失败'
     toast(message)
@@ -463,7 +520,6 @@ async function loadPairing(): Promise<void> {
       qr.classList.toggle('qr-empty', !external)
       qr.innerHTML = external ? data.qrSvg || '' : '<span class="qr-placeholder">隧道连接后生成二维码</span>'
     }
-    setChip('link-status', connected ? '已连接' : '未连接', connected)
     setText(
       '#pair-hint',
       external ? '' : '隧道未连接：当前配对链接只指向 127.0.0.1，手机无法打开。请先在“概览”启动隧道。',
@@ -1145,6 +1201,338 @@ function setSettingsStatus(text: string, ok: boolean): void {
   node.classList.toggle('bad', !ok)
 }
 
+let weixinTimer: ReturnType<typeof setTimeout> | undefined
+
+function clearWeixinPoll(): void {
+  if (weixinTimer !== undefined) {
+    clearTimeout(weixinTimer)
+    weixinTimer = undefined
+  }
+}
+
+function scheduleWeixinPoll(): void {
+  clearWeixinPoll()
+  weixinTimer = setTimeout(() => {
+    weixinTimer = undefined
+    void pollWeixinLogin()
+  }, 1500)
+}
+
+function renderWeixin(data: WeixinPayload): void {
+  const qr = $('#weixin-qr')
+  const status = $('#weixin-status')
+  const hint = $('#weixin-hint')
+  const login = $<HTMLButtonElement>('#weixin-login')
+  const logout = $<HTMLButtonElement>('#weixin-logout')
+  const rebind = $<HTMLButtonElement>('#weixin-rebind')
+  const approve = $<HTMLButtonElement>('#weixin-approve')
+  const deny = $<HTMLButtonElement>('#weixin-deny')
+  const svg = data.qrSvg || ''
+  if (qr) {
+    qr.hidden = data.state === 'pending' || !svg
+    qr.innerHTML = svg
+  }
+  if (login) {
+    login.hidden = Boolean(data.connected) || data.state === 'pending'
+    login.disabled = !data.enabled
+    login.textContent = data.state === 'expired' || data.state === 'error' ? '重新获取二维码' : '获取二维码'
+  }
+  if (logout) logout.hidden = !data.connected
+  if (rebind) rebind.hidden = !data.connected
+  if (approve) approve.hidden = data.state !== 'pending'
+  if (deny) deny.hidden = data.state !== 'pending'
+
+  if (!data.enabled) {
+    if (status) status.textContent = '微信通道未启用'
+    if (hint) hint.textContent = '在 gateway-mobile 配置中开启 weixin.enabled 后重启。'
+    return
+  }
+  if (data.connected) {
+    if (status) status.textContent = `已连接：${data.accountId || 'WeChat Bot'}`
+    if (hint) hint.textContent = '微信 Bot 已连接；扫码账号不在本地记录。换号请点“换绑微信”。'
+    return
+  }
+  if (data.state === 'pending') {
+    if (status) status.textContent = '有微信请求连接'
+    if (hint) hint.textContent = `扫码账号：${data.pendingUserId || '已隐藏'}。需要本机管理员确认后才保存凭证并连接。`
+    return
+  }
+  const labels: Record<WeixinPayload['state'], string> = {
+    idle: '未连接',
+    wait: '等待微信扫码…',
+    scaned: '已扫码，请在微信中确认',
+    pending: '等待本机确认',
+    confirmed: '已连接',
+    expired: '二维码已过期',
+    error: '连接失败',
+  }
+  if (status) status.textContent = labels[data.state] ?? '未连接'
+  if (hint) {
+    hint.textContent = data.state === 'error'
+      ? data.lastError || '连接失败，请重新获取二维码'
+      : data.state === 'expired'
+        ? '二维码已过期，请点击“重新获取二维码”。'
+        : '用微信扫描二维码登录 ClawBot；扫码后需在本机管理员确认。'
+  }
+  if ((data.state === 'wait' || data.state === 'scaned') && svg) scheduleWeixinPoll()
+}
+
+async function loadWeixinStatus(): Promise<void> {
+  try {
+    renderWeixin(await api<WeixinPayload>('/mobile/api/v1/admin/weixin'))
+  } catch (error) {
+    if (weixinGatewayUnavailable(error)) {
+      setText('#weixin-status', '当前网关未加载微信接口')
+      setText('#weixin-hint', '运行的 DSH 还是旧版本。重启 dsh web，或等待插件重载后刷新本页。')
+      const login = $<HTMLButtonElement>('#weixin-login')
+      if (login) login.disabled = true
+      return
+    }
+    toast(errorMessage(error))
+  }
+}
+
+function weixinGatewayUnavailable(error: unknown): boolean {
+  const code = gatewayErrorCode(error)
+  return code === 1008 || code === 404
+}
+
+async function startWeixinLogin(): Promise<void> {
+  clearWeixinPoll()
+  try {
+    const data = await withBusy($<HTMLButtonElement>('#weixin-login'), '获取中…', () =>
+      api<WeixinPayload>('/mobile/api/v1/admin/weixin/login', { method: 'POST' }),
+    )
+    renderWeixin(data)
+    if (data.state === 'wait' || data.state === 'scaned') scheduleWeixinPoll()
+  } catch (error) {
+    toast(weixinGatewayUnavailable(error)
+      ? '当前网关还是旧版本，重启 dsh web 后刷新本页再试。'
+      : errorMessage(error))
+    await loadWeixinStatus()
+  }
+}
+
+async function pollWeixinLogin(): Promise<void> {
+  try {
+    const data = await api<WeixinPayload>('/mobile/api/v1/admin/weixin/login')
+    renderWeixin(data)
+  } catch (error) {
+    toast(errorMessage(error))
+    clearWeixinPoll()
+  }
+}
+
+let weixinHistoryExpanded = false
+let weixinHistoryItems: WeixinNotifyPayload['recent'] = []
+let weixinHistorySelected = 0
+
+function selectWeixinHistory(index: number): void {
+  weixinHistorySelected = index
+  const rows = $$('#weixin-notify-history .notify-history-row')
+  rows.forEach((row, rowIndex) => row.classList.toggle('is-selected', rowIndex === index))
+  renderWeixinHistoryDetail(index)
+}
+
+function renderWeixinHistoryDetail(index: number): void {
+  const detail = $('#weixin-notify-detail')
+  const entry = weixinHistoryItems[index]
+  if (!detail) return
+  detail.innerHTML = ''
+  if (!entry) {
+    detail.append(el('p', { class: 'muted', text: '点击左侧记录查看详情。' }))
+    return
+  }
+  detail.append(
+    el('div', { class: 'notify-detail-meta' }, [
+      el('span', { text: new Date(entry.at).toLocaleString('zh-CN') }),
+      el('span', { text: `${entry.count} 条` }),
+    ]),
+    el('div', { class: 'notify-detail-text', text: entry.text }),
+  )
+}
+
+function renderWeixinNotify(data: WeixinNotifyPayload): void {
+  const stateNode = $('#weixin-notify-state')
+  const toggle = $<HTMLInputElement>('#weixin-notify-enabled')
+  const history = $('#weixin-notify-history')
+  const summary = $('#weixin-notify-summary')
+  const expand = $<HTMLButtonElement>('#weixin-notify-toggle')
+  if (stateNode) {
+    stateNode.textContent = data.enabled ? '已开启' : '已关闭'
+    stateNode.classList.toggle('ok', data.enabled)
+    stateNode.classList.toggle('bad', !data.enabled)
+  }
+  if (toggle) {
+    toggle.checked = data.enabled
+    toggle.disabled = false
+  }
+  if (!history) return
+  weixinHistoryItems = data.recent
+  weixinHistorySelected = 0
+  history.innerHTML = ''
+  if (summary) summary.textContent = data.recent.length === 0 ? '暂无推送记录' : `共 ${data.recent.length} 条 · 左侧选择记录查看详情`
+  if (data.recent.length === 0) {
+    history.append(el('p', { class: 'muted', text: '暂无推送记录。' }))
+    if (expand) expand.hidden = true
+    renderWeixinHistoryDetail(0)
+    return
+  }
+  const canCollapse = data.recent.length > 3
+  history.classList.toggle('is-collapsed', canCollapse && !weixinHistoryExpanded)
+  if (expand) {
+    expand.hidden = !canCollapse
+    expand.textContent = weixinHistoryExpanded ? '收起' : '展开全部'
+  }
+  for (const [index, entry] of data.recent.entries()) {
+    const preview = entry.text.split('\n').map((line) => line.trim()).find(Boolean) ?? 'DSH 任务完成'
+    const row = el('button', { class: 'notify-history-row', type: 'button' }, [
+      el('div', { class: 'notify-history-meta' }, [
+        el('span', { text: new Date(entry.at).toLocaleString('zh-CN') }),
+        el('span', { text: `${entry.count} 条` }),
+      ]),
+      el('div', { class: 'notify-history-preview', text: preview.slice(0, 100) }),
+    ])
+    row.addEventListener('click', () => selectWeixinHistory(index))
+    history.append(row)
+  }
+  selectWeixinHistory(0)
+}
+
+async function loadWeixinNotify(): Promise<void> {
+  try {
+    renderWeixinNotify(await api<WeixinNotifyPayload>('/mobile/api/v1/admin/weixin/notify'))
+  } catch (error) {
+    if (!weixinGatewayUnavailable(error)) toast(errorMessage(error))
+    setText('#weixin-notify-state', '未加载')
+    const toggle = $<HTMLInputElement>('#weixin-notify-enabled')
+    if (toggle) toggle.disabled = true
+  }
+}
+
+function approvalStatusLabel(status: WeixinApprovalEntry['status']): string {
+  return {
+    pending: '等待回复',
+    allowed: '已允许',
+    rejected: '已拒绝',
+    timeout: '已超时',
+    cancelled: '已取消',
+    unavailable: '无法送达',
+  }[status]
+}
+
+function renderWeixinApprovals(items: WeixinApprovalEntry[]): void {
+  const history = $('#weixin-approval-history')
+  if (!history) return
+  history.innerHTML = ''
+  if (items.length === 0) {
+    history.append(el('p', { class: 'muted', text: '暂无审批记录。' }))
+    return
+  }
+  for (const entry of items) {
+    const status = approvalStatusLabel(entry.status)
+    history.append(el('div', { class: 'approval-history-item' }, [
+      el('div', { class: 'approval-history-meta' }, [
+        el('span', { text: new Date(entry.at).toLocaleString('zh-CN') }),
+        el('span', { class: `approval-status ${entry.status}`, text: status }),
+      ]),
+      el('div', { class: 'approval-history-title', text: `#${entry.id} · ${entry.toolName}` }),
+      el('div', { class: 'approval-history-session', text: `会话：${shortSessionId(entry.sessionId)}` }),
+      el('div', { class: 'approval-history-reason', text: entry.reason }),
+    ]))
+  }
+}
+
+function shortSessionId(sessionId: string): string {
+  if (!sessionId) return '(unknown)'
+  return sessionId.length > 18 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-6)}` : sessionId
+}
+
+async function loadWeixinApprovals(): Promise<void> {
+  try {
+    const data = await api<{ items?: WeixinApprovalEntry[] }>('/mobile/api/v1/admin/weixin/approvals')
+    renderWeixinApprovals(data.items ?? [])
+  } catch (error) {
+    if (!weixinGatewayUnavailable(error)) toast(errorMessage(error))
+  }
+}
+
+async function setWeixinNotifyEnabled(enabled: boolean): Promise<void> {
+  const toggle = $<HTMLInputElement>('#weixin-notify-enabled')
+  if (toggle) toggle.disabled = true
+  try {
+    const data = await api<WeixinNotifyPayload>('/mobile/api/v1/admin/weixin/notify', {
+      method: 'POST',
+      body: { enabled },
+    })
+    renderWeixinNotify(data)
+    toast(enabled ? '已开启跨会话推送' : '已关闭跨会话推送', 'ok')
+  } catch (error) {
+    toast(errorMessage(error))
+    if (toggle) toggle.disabled = false
+    await loadWeixinNotify()
+  }
+}
+
+async function approveWeixin(approve: boolean): Promise<void> {
+  clearWeixinPoll()
+  const button = $<HTMLButtonElement>(approve ? '#weixin-approve' : '#weixin-deny')
+  try {
+    const data = await withBusy(button, approve ? '连接中…' : '拒绝中…', () =>
+      api<WeixinPayload>('/mobile/api/v1/admin/weixin/approve', {
+        method: 'POST',
+        body: { approve },
+      }),
+    )
+    renderWeixin(data)
+    toast(approve ? '已允许微信连接' : '已拒绝该微信连接请求', approve ? 'ok' : undefined)
+  } catch (error) {
+    toast(errorMessage(error))
+    await loadWeixinStatus()
+  }
+}
+
+async function logoutWeixin(): Promise<void> {
+  clearWeixinPoll()
+  try {
+    const data = await withBusy($<HTMLButtonElement>('#weixin-logout'), '断开中…', () =>
+      api<WeixinPayload>('/mobile/api/v1/admin/weixin/logout', { method: 'POST' }),
+    )
+    renderWeixin(data)
+    toast('已断开微信连接', 'ok')
+  } catch (error) {
+    toast(errorMessage(error))
+  }
+}
+
+async function rebindWeixin(): Promise<void> {
+  const confirmed = await openModal({
+    title: '换绑微信',
+    eyebrow: 'WECHAT',
+    body: el('div', { class: 'weixin-rebind-body' }, [
+      el('p', { text: '换绑会断开当前微信，并重置微信专用的 DSH 会话。' }),
+      el('p', { class: 'hint', text: '旧微信号之后不会再收到 DSH 回复；新号扫码确认后会自动连接。' }),
+    ]),
+    confirmText: '继续换绑',
+    danger: true,
+    onConfirm: async () => true,
+  })
+  if (!confirmed) return
+  clearWeixinPoll()
+  try {
+    const data = await withBusy($<HTMLButtonElement>('#weixin-rebind'), '换绑中…', async () => {
+      await api<WeixinPayload>('/mobile/api/v1/admin/weixin/logout', { method: 'POST' })
+      return api<WeixinPayload>('/mobile/api/v1/admin/weixin/login', { method: 'POST' })
+    })
+    renderWeixin(data)
+    if (data.state === 'wait' || data.state === 'scaned') scheduleWeixinPoll()
+    toast('请用新的微信扫码并确认', 'ok')
+  } catch (error) {
+    toast(errorMessage(error))
+    await loadWeixinStatus()
+  }
+}
+
 async function loadSettings(): Promise<void> {
   try {
     const settings = await api<SettingsPayload>('/mobile/api/v1/admin/settings')
@@ -1246,16 +1634,6 @@ async function resetSettings(): Promise<void> {
   if (daysInput) daysInput.value = '1'
   if (minutesInput) minutesInput.value = '15'
   await saveSettings()
-}
-
-async function loadHeaderStatus(): Promise<void> {
-  try {
-    const status = await api<StatusPayload>('/mobile/api/v1/status')
-    const connected = Boolean(status.tunnel?.connected)
-    setChip('link-status', connected ? '已连接' : '未连接', connected)
-  } catch {
-    setChip('link-status', '未连接', false)
-  }
 }
 
 async function refreshAll() {
@@ -1420,8 +1798,41 @@ $('#copy')?.addEventListener('click', async () => {
   }
 })
 
+function bindCollapsiblePanel(panelId: string, buttonId: string): void {
+  const panel = $(`#${panelId}`)
+  const button = $(`#${buttonId}`)
+  if (!panel || !button) return
+  button.addEventListener('click', () => {
+    const collapsed = panel.classList.toggle('is-collapsed')
+    button.setAttribute('aria-expanded', String(!collapsed))
+    button.setAttribute('title', collapsed ? '展开' : '折叠')
+  })
+}
+
+bindCollapsiblePanel('weixin-history-panel', 'weixin-history-collapse')
+bindCollapsiblePanel('weixin-approval-panel', 'weixin-approval-collapse')
+
 $('#save-settings')?.addEventListener('click', () => void saveSettings())
 $('#reset-settings')?.addEventListener('click', () => void resetSettings())
+$('#weixin-login')?.addEventListener('click', () => void startWeixinLogin())
+$('#weixin-approve')?.addEventListener('click', () => void approveWeixin(true))
+$('#weixin-deny')?.addEventListener('click', () => void approveWeixin(false))
+$('#weixin-rebind')?.addEventListener('click', () => void rebindWeixin())
+$('#weixin-logout')?.addEventListener('click', () => void logoutWeixin())
+$('#weixin-refresh')?.addEventListener('click', () => void loadWeixinStatus())
+$('#weixin-notify-refresh')?.addEventListener('click', () => void loadWeixinNotify())
+$('#weixin-notify-toggle')?.addEventListener('click', () => {
+  weixinHistoryExpanded = !weixinHistoryExpanded
+  const history = $('#weixin-notify-history')
+  history?.classList.toggle('is-collapsed', !weixinHistoryExpanded)
+  const toggle = $<HTMLButtonElement>('#weixin-notify-toggle')
+  if (toggle) toggle.textContent = weixinHistoryExpanded ? '收起' : '展开全部'
+})
+$('#weixin-approval-refresh')?.addEventListener('click', () => void loadWeixinApprovals())
+$('#weixin-notify-enabled')?.addEventListener('change', (event) => {
+  const target = event.target as HTMLInputElement
+  void setWeixinNotifyEnabled(target.checked)
+})
 $('#settings-form')?.addEventListener('submit', (event) => {
   event.preventDefault()
   void saveSettings()
@@ -1430,9 +1841,8 @@ for (const selector of ['#setting-session-days', '#setting-pairing-minutes']) {
   $(selector)?.addEventListener('input', () => clearSettingsErrors())
 }
 
-void loadHeaderStatus()
 const initialTab = location.hash.slice(1)
-activate(['overview', 'pair', 'devices', 'logs', 'settings'].includes(initialTab) ? (initialTab as TabName) : 'overview')
+activate(['overview', 'pair', 'weixin', 'devices', 'logs', 'settings'].includes(initialTab) ? (initialTab as TabName) : 'overview')
 setInterval(tickPairing, 1000)
 setInterval(tickUptime, 1000)
 setInterval(() => {
@@ -1447,5 +1857,5 @@ setInterval(() => {
       state.selectedDeviceIds.size > 0 ||
       Boolean(list && list.contains(document.activeElement))
     if (!busy) void loadDevices()
-  } else if (state.activeTab !== 'settings') void loadHeaderStatus()
+  }
 }, 30_000)

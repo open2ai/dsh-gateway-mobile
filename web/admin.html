@@ -6,12 +6,14 @@
   <meta name="theme-color" content="#101113">
   <title>DSH Gateway · Admin</title>
   <link rel="icon" href="/mobile/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/mobile/assets/admin.css?v=31">
+  <link rel="stylesheet" href="/mobile/assets/admin.css?v=53">
 </head>
 <body class="app-body">
   <svg class="svg-sprite" aria-hidden="true" focusable="false">
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.4L3 21l1.1-3.6A8.4 8.4 0 1 1 21 11.5z"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
     <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></symbol>
@@ -39,6 +41,7 @@
       <nav class="app-nav" aria-label="管理分区">
         <button class="tab active" data-tab="overview" data-label="概览" title="概览"><svg class="icon"><use href="#i-grid"/></svg><span>概览</span></button>
         <button class="tab" data-tab="pair" data-label="配对" title="配对"><svg class="icon"><use href="#i-link"/></svg><span>配对</span></button>
+        <button class="tab" data-tab="weixin" data-label="微信" title="微信"><svg class="icon"><use href="#i-chat"/></svg><span>微信</span></button>
         <button class="tab" data-tab="devices" data-label="设备" title="设备"><svg class="icon"><use href="#i-phone"/></svg><span>设备</span></button>
         <button class="tab" data-tab="logs" data-label="日志" title="日志"><svg class="icon"><use href="#i-list"/></svg><span>日志</span></button>
         <button class="tab" data-tab="settings" data-label="设置" title="设置"><svg class="icon"><use href="#i-settings"/></svg><span>设置</span></button>
@@ -59,7 +62,6 @@
           </div>
         </div>
         <div class="app-topbar-actions">
-          <span class="status-pill" id="link-status"><span class="dot"></span><span id="link-text">检查中</span></span>
           <button class="icon-button" id="theme-toggle" aria-label="切换主题"><svg class="icon"><use href="#i-sun"/></svg></button>
           <button class="icon-button" id="refresh" aria-label="刷新"><svg class="icon"><use href="#i-refresh"/></svg></button>
         </div>
@@ -75,10 +77,10 @@
             <div class="kpi"><div class="kpi-top"><span class="kpi-label">网关版本</span><span class="kpi-icon"><svg class="icon"><use href="#i-refresh-cw"/></svg></span></div><strong class="kpi-value" id="metric-version">-</strong><span class="kpi-foot">dsh-gateway-mobile</span></div>
           </div>
 
-          <div class="dashboard-grid">
+          <div class="channel-grid">
             <div class="panel">
               <div class="panel-head">
-                <div class="panel-title"><span class="eyebrow">TUNNEL</span><h2>链路状态</h2></div>
+                <div class="panel-title"><span class="eyebrow">TUNNEL</span><h2>公网隧道</h2></div>
                 <span class="status-pill" id="tunnel-chip"><span class="dot"></span><span id="tunnel-chip-text">-</span></span>
               </div>
               <div class="panel-body">
@@ -96,19 +98,41 @@
               </div>
             </div>
 
-            <div class="panel quick-panel">
-              <div class="panel-head"><div class="panel-title"><span class="eyebrow">QUICK ACTIONS</span><h2>快捷操作</h2></div></div>
-              <div class="panel-body quick-actions">
+            <div class="panel channel-weixin">
+              <div class="panel-head">
+                <div class="panel-title"><span class="eyebrow">WECHAT</span><h2>微信 Bot</h2></div>
+                <span class="status-pill" id="overview-weixin-chip"><span class="dot"></span><span id="overview-weixin-chip-text">检查中</span></span>
+              </div>
+              <div class="panel-body">
+                <div class="channel-hero">
+                  <span class="channel-icon"><svg class="icon"><use href="#i-chat"/></svg></span>
+                  <div class="channel-hero-copy">
+                    <strong>ClawBot / iLink</strong>
+                    <small id="overview-weixin-account">微信 Bot 未连接</small>
+                  </div>
+                </div>
+                <dl class="data-list">
+                  <div><dt>消息方向</dt><dd>微信 ↔ 专用 DSH 会话</dd></div>
+                  <div><dt>本次接收</dt><dd id="overview-weixin-received">-</dd></div>
+                </dl>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel quick-panel overview-quick">
+            <div class="panel-head"><div class="panel-title"><span class="eyebrow">QUICK ACTIONS</span><h2>快捷操作</h2></div></div>
+            <div class="panel-body">
+              <div class="quick-actions quick-actions-grid">
                 <button class="quick-action" id="go-pair">
                   <span class="quick-icon"><svg class="icon"><use href="#i-plus"/></svg></span>
                   <span><strong>添加设备</strong><small>生成新配对码 / 二维码</small></span>
                 </button>
-                <a class="quick-action" href="/mobile/shell">
-                  <span class="quick-icon"><svg class="icon"><use href="#i-external"/></svg></span>
-                  <span><strong>打开 DSH</strong><small>进入官方 Web UI</small></span>
+                <a class="quick-action" href="#weixin">
+                  <span class="quick-icon"><svg class="icon"><use href="#i-chat"/></svg></span>
+                  <span><strong>管理微信</strong><small>扫码 / 换绑 / 推送记录</small></span>
                 </a>
-                <div class="callout">管理页只在电脑本机可访问。Quick Tunnel 重启后域名会变化，手机需重新配对。</div>
               </div>
+              <div class="callout">管理页只在电脑本机可访问。公网隧道与微信 Bot 是两条独立通道；手机设备是否在线看「设备」页。Quick Tunnel 重启后域名会变化，手机需重新配对。</div>
             </div>
           </div>
 
@@ -164,6 +188,7 @@
                   <button class="button primary" id="regenerate">重新生成</button>
                 </div>
                 <p class="hint" id="pair-hint"></p>
+                <p class="hint">配对码不是连接状态；手机扫码并输入配对码成功后，才会成为“设备”页中的一台设备。公网隧道状态看“概览”里的「公网隧道」。</p>
               </div>
             </div>
           </div>
@@ -183,7 +208,7 @@
         <section class="tab-panel" data-panel="devices" role="tabpanel">
           <div class="panel">
             <div class="panel-head">
-              <div class="panel-title"><span class="eyebrow">DEVICES</span><h2>已授权设备</h2><p class="panel-sub">在线设备优先 · 勾选可批量撤销 · 已撤销记录可永久删除</p></div>
+              <div class="panel-title"><span class="eyebrow">DEVICES</span><h2>已授权设备</h2><p class="panel-sub">这里才是手机设备状态 · 在线表示手机 WebSocket 正连接 · 可批量撤销</p></div>
               <button class="text-button" id="refresh-devices">刷新</button>
             </div>
             <div class="panel-body">
@@ -241,7 +266,7 @@
         <section class="tab-panel" data-panel="settings" role="tabpanel">
           <div class="panel">
             <div class="panel-head">
-              <div class="panel-title"><span class="eyebrow">SETTINGS</span><h2>管理设置</h2><p class="panel-sub">修改后立即生效，并写入本机 settings 文件</p></div>
+              <div class="panel-title"><span class="eyebrow">PAIRING</span><h2>配对码与设备登录</h2><p class="panel-sub">手机设备配对码有效期与登录会话时长</p></div>
             </div>
             <div class="panel-body">
               <div class="settings-notice" id="settings-notice" hidden></div>
@@ -277,6 +302,110 @@
               </form>
             </div>
           </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">
+                <span class="eyebrow">WECHAT</span>
+                <h2>微信连接与推送</h2>
+                <p class="panel-sub">扫码、换绑在「微信」页操作；这里管理跨会话推送</p>
+              </div>
+              <span class="weixin-status" id="weixin-notify-state">读取中…</span>
+            </div>
+            <div class="panel-body">
+              <div class="notify-setting-row">
+                <div class="notify-setting-copy">
+                  <strong>会话完成推送</strong>
+                  <p class="hint">任意工作区的顶层会话完成后推送微信。</p>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="weixin-notify-enabled" aria-label="开启跨会话微信推送">
+                  <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+              </div>
+              <div class="notify-rule-chips">
+                <span class="rule-chip">5 秒合并</span>
+                <span class="rule-chip">单会话 30 秒冷却</span>
+                <span class="rule-chip">全局 10 秒间隔</span>
+                <span class="rule-chip">每小时最多 20 条</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-panel="weixin" role="tabpanel">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">
+                <span class="eyebrow">WECHAT</span>
+                <h2>微信连接</h2>
+                <p class="panel-sub">扫码绑定 ClawBot/iLink 通道；仅扫码微信用户可对话</p>
+              </div>
+              <button class="text-button" id="weixin-refresh" type="button">刷新</button>
+            </div>
+            <div class="panel-body">
+              <div class="weixin-connect">
+                <div class="weixin-qr" id="weixin-qr" hidden></div>
+                <div class="weixin-info">
+                  <p class="weixin-status" id="weixin-status">未连接</p>
+                  <p class="hint" id="weixin-hint">用微信扫描二维码登录 ClawBot；扫码后需在本机管理后台确认连接。</p>
+                  <div class="panel-actions">
+                    <button class="button primary" id="weixin-login" type="button">获取二维码</button>
+                    <button class="button primary" id="weixin-approve" type="button" hidden>允许连接</button>
+                    <button class="button danger" id="weixin-deny" type="button" hidden>拒绝</button>
+                    <button class="button" id="weixin-rebind" type="button" hidden>换绑微信</button>
+                    <button class="button danger" id="weixin-logout" type="button" hidden>断开微信</button>
+                  </div>
+                </div>
+              </div>
+              <p class="hint">跨会话推送开关在「设置 → 微信连接与推送」；下方是最近推送和审批记录。</p>
+            </div>
+          </div>
+
+          <div class="panel" id="weixin-history-panel">
+            <div class="panel-head">
+              <div class="panel-title">
+                <span class="eyebrow">HISTORY</span>
+                <h2>最近推送</h2>
+                <p class="panel-sub">最近 50 条跨会话完成通知</p>
+              </div>
+              <div class="history-actions">
+                <button class="text-button" id="weixin-notify-toggle" type="button" hidden>展开</button>
+                <button class="text-button" id="weixin-notify-refresh" type="button">刷新</button>
+                <button class="icon-button panel-collapse" id="weixin-history-collapse" type="button" aria-label="折叠最近推送" aria-expanded="true" title="折叠"><svg class="icon"><use href="#i-chevron"/></svg></button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="notify-history-total" id="weixin-notify-summary">暂无推送记录</div>
+              <div class="notify-history-layout">
+                <div class="notify-history-list is-collapsed" id="weixin-notify-history">
+                  <p class="muted">暂无推送记录。</p>
+                </div>
+                <div class="notify-history-detail" id="weixin-notify-detail">
+                  <p class="muted">点击左侧记录查看详情。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" id="weixin-approval-panel">
+            <div class="panel-head">
+              <div class="panel-title">
+                <span class="eyebrow">APPROVALS</span>
+                <h2>审批记录</h2>
+                <p class="panel-sub">最近 50 条跨会话审批 · 独立额度</p>
+              </div>
+              <div class="history-actions">
+                <button class="text-button" id="weixin-approval-refresh" type="button">刷新</button>
+                <button class="icon-button panel-collapse" id="weixin-approval-collapse" type="button" aria-label="折叠审批记录" aria-expanded="true" title="折叠"><svg class="icon"><use href="#i-chevron"/></svg></button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="approval-history" id="weixin-approval-history">
+                <p class="muted">暂无审批记录。</p>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
     </div>
@@ -285,6 +414,7 @@
   <nav class="app-bottom-nav" aria-label="管理分区">
     <button class="tab active" data-tab="overview"><svg class="icon"><use href="#i-grid"/></svg><span>概览</span></button>
     <button class="tab" data-tab="pair"><svg class="icon"><use href="#i-link"/></svg><span>配对</span></button>
+    <button class="tab" data-tab="weixin"><svg class="icon"><use href="#i-chat"/></svg><span>微信</span></button>
     <button class="tab" data-tab="devices"><svg class="icon"><use href="#i-phone"/></svg><span>设备</span></button>
     <button class="tab" data-tab="logs"><svg class="icon"><use href="#i-list"/></svg><span>日志</span></button>
     <button class="tab" data-tab="settings"><svg class="icon"><use href="#i-settings"/></svg><span>设置</span></button>
@@ -307,6 +437,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="/mobile/assets/admin.js?v=34"></script>
+  <script type="module" src="/mobile/assets/admin.js?v=58"></script>
 </body>
 </html>

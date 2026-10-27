@@ -30,6 +30,8 @@ import type { SettingsStore } from './settings.js'
 import type { StatsStore, StatsSummary } from './stats.js'
 import type { TunnelManager, TunnelStatus } from './tunnel.js'
 import type { DeviceManager } from './devices.js'
+import type { WeixinChannel } from './weixin.js'
+import type { WeixinNotifier } from './weixin-notifier.js'
 import { acceptWebSocket, WsConnection } from './ws.js'
 import {
   describeDevice,
@@ -128,6 +130,9 @@ export interface GatewayOptions {
   cookieProvider: DshCookieProvider
   proxy: ProxyEngine
   oauth: OAuthManager
+  weixin?: WeixinChannel
+  weixinNotifier?: WeixinNotifier
+  weixinApprovalHistory?: () => unknown
   stats?: StatsStore
   settingsStore?: SettingsStore
   version: string
@@ -139,6 +144,9 @@ export class Gateway {
   devices: DeviceManager
   logger: Logger
   oauth: OAuthManager
+  weixin: WeixinChannel | undefined
+  weixinNotifier: WeixinNotifier | undefined
+  weixinApprovalHistory: (() => unknown) | undefined
   oauthLimiter: RateLimiter
   onTunnelStatus: () => void
   pairing: PairingManager
@@ -165,6 +173,9 @@ export class Gateway {
     this.cookieProvider = options.cookieProvider
     this.proxy = options.proxy
     this.oauth = options.oauth
+    this.weixin = options.weixin
+    this.weixinNotifier = options.weixinNotifier
+    this.weixinApprovalHistory = options.weixinApprovalHistory
     this.stats = options.stats
     this.settingsStore = options.settingsStore
     this.version = options.version
@@ -273,6 +284,8 @@ export class Gateway {
 
   async close(): Promise<void> {
     this.tunnel.off('status', this.onTunnelStatus)
+    this.weixin?.stop()
+    this.weixinNotifier?.stop()
     this.rateLimiter.stop()
     for (const client of this.wsClients) client.close(1001, 'server shutdown')
     this.wsClients.clear()
@@ -821,6 +834,66 @@ export class Gateway {
       const body = await this.#readJson(req)
       const updated = await this.updateAuthSettings(body)
       this.#sendJson(req, res, CODES.SUCCESS, updated)
+      return
+    }
+
+    if (pathname === '/mobile/api/v1/admin/weixin' && method === 'GET') {
+      if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
+      if (!this.weixin) throw new GatewayError(CODES.NOT_SUPPORTED)
+      this.#sendJson(req, res, CODES.SUCCESS, this.weixin.status())
+      return
+    }
+
+    if (pathname === '/mobile/api/v1/admin/weixin/login' && method === 'POST') {
+      if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
+      if (!this.weixin) throw new GatewayError(CODES.NOT_SUPPORTED)
+      this.#sendJson(req, res, CODES.SUCCESS, await this.weixin.beginLogin())
+      return
+    }
+
+    if (pathname === '/mobile/api/v1/admin/weixin/login' && method === 'GET') {
+      if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
+      if (!this.weixin) throw new GatewayError(CODES.NOT_SUPPORTED)
+      this.#sendJson(req, res, CODES.SUCCESS, await this.weixin.pollLogin())
+      return
+    }
+
+    if (pathname === '/mobile/api/v1/admin/weixin/approve' && method === 'POST') {
+      if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
+      if (!this.weixin) throw new GatewayError(CODES.NOT_SUPPORTED)
+      const body = await this.#readJson(req)
+      if (typeof body.approve !== 'boolean') throw new GatewayError(CODES.INVALID_PARAMS)
+      this.#sendJson(req, res, CODES.SUCCESS, await this.weixin.approveLogin(body.approve))
+      return
+    }
+
+    if (pathname === '/mobile/api/v1/admin/weixin/notify' && method === 'GET') {
+      if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
+      if (!this.weixinNotifier) throw new GatewayError(CODES.NOT_SUPPORTED)
+      this.#sendJson(req, res, CODES.SUCCESS, this.weixinNotifier.status())
+      return
+    }
+
+    if (pathname === '/mobile/api/v1/admin/weixin/notify' && method === 'POST') {
+      if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
+      if (!this.weixinNotifier) throw new GatewayError(CODES.NOT_SUPPORTED)
+      const body = await this.#readJson(req)
+      if (typeof body.enabled !== 'boolean') throw new GatewayError(CODES.INVALID_PARAMS)
+      this.#sendJson(req, res, CODES.SUCCESS, await this.weixinNotifier.setEnabled(body.enabled))
+      return
+    }
+
+    if (pathname === '/mobile/api/v1/admin/weixin/approvals' && method === 'GET') {
+      if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
+      if (!this.weixinApprovalHistory) throw new GatewayError(CODES.NOT_SUPPORTED)
+      this.#sendJson(req, res, CODES.SUCCESS, { items: this.weixinApprovalHistory() })
+      return
+    }
+
+    if (pathname === '/mobile/api/v1/admin/weixin/logout' && method === 'POST') {
+      if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
+      if (!this.weixin) throw new GatewayError(CODES.NOT_SUPPORTED)
+      this.#sendJson(req, res, CODES.SUCCESS, await this.weixin.logout())
       return
     }
 

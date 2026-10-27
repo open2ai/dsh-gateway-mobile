@@ -59,10 +59,34 @@ export interface GatewayConfig {
     inactiveExpiryDays: number
     maxDevicesPerUser: number
   }
+  weixin: WeixinConfig
   log: {
     level: string
     maxEntries: number
   }
+}
+
+export interface WeixinConfig {
+  enabled: boolean
+  baseUrl: string
+  cdnBase: string
+  routeTag: string
+  channelVersion: string
+  requireApproval: boolean
+  notify: WeixinNotifyConfig
+  approval: WeixinApprovalConfig
+}
+
+export interface WeixinApprovalConfig {
+  maxPerHour: number
+}
+
+export interface WeixinNotifyConfig {
+  enabled: boolean
+  debounceMs: number
+  perSessionIntervalMs: number
+  globalIntervalMs: number
+  maxPerHour: number
 }
 
 export interface RuntimeEnv {
@@ -121,6 +145,24 @@ const DEFAULTS = {
   device: {
     inactiveExpiryDays: 30,
     maxDevicesPerUser: 10,
+  },
+  weixin: {
+    enabled: true,
+    baseUrl: 'https://ilinkai.weixin.qq.com',
+    cdnBase: 'https://novac2c.cdn.weixin.qq.com/c2c',
+    routeTag: '',
+    channelVersion: '1.0.0',
+    requireApproval: true,
+    notify: {
+      enabled: true,
+      debounceMs: 5000,
+      perSessionIntervalMs: 30000,
+      globalIntervalMs: 10000,
+      maxPerHour: 20,
+    },
+    approval: {
+      maxPerHour: 60,
+    },
   },
   log: {
     level: 'info',
@@ -246,6 +288,24 @@ export function normalizeConfig(raw?: unknown, runtime: RuntimeEnv = {}): Gatewa
     device: {
       inactiveExpiryDays: requireInt('device.inactiveExpiryDays', merged.device.inactiveExpiryDays, 1, 3650),
       maxDevicesPerUser: requireInt('device.maxDevicesPerUser', merged.device.maxDevicesPerUser, 1, 100),
+    },
+    weixin: {
+      enabled: requireBoolean('weixin.enabled', merged.weixin.enabled),
+      baseUrl: requireString('weixin.baseUrl', merged.weixin.baseUrl),
+      cdnBase: requireString('weixin.cdnBase', merged.weixin.cdnBase),
+      routeTag: requireString('weixin.routeTag', merged.weixin.routeTag, { allowEmpty: true }),
+      channelVersion: requireString('weixin.channelVersion', merged.weixin.channelVersion),
+      requireApproval: requireBoolean('weixin.requireApproval', merged.weixin.requireApproval),
+      notify: {
+        enabled: requireBoolean('weixin.notify.enabled', merged.weixin.notify.enabled),
+        debounceMs: requireInt('weixin.notify.debounceMs', merged.weixin.notify.debounceMs, 1000, 60000),
+        perSessionIntervalMs: requireInt('weixin.notify.perSessionIntervalMs', merged.weixin.notify.perSessionIntervalMs, 1000, 3600000),
+        globalIntervalMs: requireInt('weixin.notify.globalIntervalMs', merged.weixin.notify.globalIntervalMs, 1000, 3600000),
+        maxPerHour: requireInt('weixin.notify.maxPerHour', merged.weixin.notify.maxPerHour, 1, 1000),
+      },
+      approval: {
+        maxPerHour: requireInt('weixin.approval.maxPerHour', merged.weixin.approval.maxPerHour, 1, 1000),
+      },
     },
     log: {
       level: requireString('log.level', merged.log.level),

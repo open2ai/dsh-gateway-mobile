@@ -1,5 +1,5 @@
 /* Minimal shell cache for the gateway PWA. API and WebSocket traffic is never cached. */
-const CACHE = 'dsh-gateway-mobile-v12'
+const CACHE = 'dsh-gateway-mobile-v14'
 const SHELL = [
   '/mobile/',
   '/mobile/assets/app.css?v=10',
