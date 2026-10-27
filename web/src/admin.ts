@@ -1352,6 +1352,25 @@ function renderWeixinHistoryDetail(index: number): void {
   )
 }
 
+function setNumberInput(selector: string, value: number): void {
+  const input = $<HTMLInputElement>(selector)
+  if (input) input.value = String(value)
+}
+
+function updateWeixinPolicyOutputs(): void {
+  const pairs: Array<[string, string, string]> = [
+    ['#weixin-notify-debounce', '#weixin-notify-debounce-value', ' 秒'],
+    ['#weixin-notify-per-session', '#weixin-notify-per-session-value', ' 秒'],
+    ['#weixin-notify-global', '#weixin-notify-global-value', ' 秒'],
+    ['#weixin-notify-max', '#weixin-notify-max-value', ' 条'],
+  ]
+  for (const [inputSelector, outputSelector, unit] of pairs) {
+    const input = $<HTMLInputElement>(inputSelector)
+    const output = $(outputSelector)
+    if (input && output) output.textContent = `${input.value}${unit}`
+  }
+}
+
 function renderWeixinNotify(data: WeixinNotifyPayload): void {
   const stateNode = $('#weixin-notify-state')
   const toggle = $<HTMLInputElement>('#weixin-notify-enabled')
@@ -1367,6 +1386,11 @@ function renderWeixinNotify(data: WeixinNotifyPayload): void {
     toggle.checked = data.enabled
     toggle.disabled = false
   }
+  setNumberInput('#weixin-notify-debounce', Math.round(data.debounceMs / 1000))
+  setNumberInput('#weixin-notify-per-session', Math.round(data.perSessionIntervalMs / 1000))
+  setNumberInput('#weixin-notify-global', Math.round(data.globalIntervalMs / 1000))
+  setNumberInput('#weixin-notify-max', data.maxPerHour)
+  updateWeixinPolicyOutputs()
   if (!history) return
   weixinHistoryItems = data.recent
   weixinHistorySelected = 0
@@ -1471,6 +1495,41 @@ async function setWeixinNotifyEnabled(enabled: boolean): Promise<void> {
     toast(errorMessage(error))
     if (toggle) toggle.disabled = false
     await loadWeixinNotify()
+  }
+}
+
+async function saveWeixinNotifyPolicy(): Promise<void> {
+  const button = $<HTMLButtonElement>('#weixin-notify-save-policy')
+  const read = (selector: string): number => Math.round(Number($<HTMLInputElement>(selector)?.value))
+  const debounce = read('#weixin-notify-debounce')
+  const perSession = read('#weixin-notify-per-session')
+  const globalInterval = read('#weixin-notify-global')
+  const maxPerHour = read('#weixin-notify-max')
+  if (
+    !Number.isFinite(debounce) || debounce < 3 || debounce > 30 ||
+    !Number.isFinite(perSession) || perSession < 10 || perSession > 300 ||
+    !Number.isFinite(globalInterval) || globalInterval < 5 || globalInterval > 120 ||
+    !Number.isFinite(maxPerHour) || maxPerHour < 5 || maxPerHour > 100
+  ) {
+    toast('请填写有效的推送节奏参数')
+    return
+  }
+  try {
+    const data = await withBusy(button, '保存中…', () =>
+      api<WeixinNotifyPayload>('/mobile/api/v1/admin/weixin/notify', {
+        method: 'POST',
+        body: {
+          debounceMs: debounce * 1000,
+          perSessionIntervalMs: perSession * 1000,
+          globalIntervalMs: globalInterval * 1000,
+          maxPerHour,
+        },
+      }),
+    )
+    renderWeixinNotify(data)
+    toast('推送节奏已保存，立即生效', 'ok')
+  } catch (error) {
+    toast(errorMessage(error))
   }
 }
 
@@ -1821,6 +1880,10 @@ $('#weixin-rebind')?.addEventListener('click', () => void rebindWeixin())
 $('#weixin-logout')?.addEventListener('click', () => void logoutWeixin())
 $('#weixin-refresh')?.addEventListener('click', () => void loadWeixinStatus())
 $('#weixin-notify-refresh')?.addEventListener('click', () => void loadWeixinNotify())
+$('#weixin-notify-save-policy')?.addEventListener('click', () => void saveWeixinNotifyPolicy())
+for (const selector of ['#weixin-notify-debounce', '#weixin-notify-per-session', '#weixin-notify-global', '#weixin-notify-max']) {
+  $(selector)?.addEventListener('input', updateWeixinPolicyOutputs)
+}
 $('#weixin-notify-toggle')?.addEventListener('click', () => {
   weixinHistoryExpanded = !weixinHistoryExpanded
   const history = $('#weixin-notify-history')

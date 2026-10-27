@@ -156,9 +156,9 @@ const DEFAULTS = {
     notify: {
       enabled: true,
       debounceMs: 5000,
-      perSessionIntervalMs: 30000,
-      globalIntervalMs: 10000,
-      maxPerHour: 20,
+      perSessionIntervalMs: 60000,
+      globalIntervalMs: 15000,
+      maxPerHour: 30,
     },
     approval: {
       maxPerHour: 60,
@@ -298,10 +298,10 @@ export function normalizeConfig(raw?: unknown, runtime: RuntimeEnv = {}): Gatewa
       requireApproval: requireBoolean('weixin.requireApproval', merged.weixin.requireApproval),
       notify: {
         enabled: requireBoolean('weixin.notify.enabled', merged.weixin.notify.enabled),
-        debounceMs: requireInt('weixin.notify.debounceMs', merged.weixin.notify.debounceMs, 1000, 60000),
-        perSessionIntervalMs: requireInt('weixin.notify.perSessionIntervalMs', merged.weixin.notify.perSessionIntervalMs, 1000, 3600000),
-        globalIntervalMs: requireInt('weixin.notify.globalIntervalMs', merged.weixin.notify.globalIntervalMs, 1000, 3600000),
-        maxPerHour: requireInt('weixin.notify.maxPerHour', merged.weixin.notify.maxPerHour, 1, 1000),
+        debounceMs: requireInt('weixin.notify.debounceMs', merged.weixin.notify.debounceMs, 3000, 30000),
+        perSessionIntervalMs: requireInt('weixin.notify.perSessionIntervalMs', merged.weixin.notify.perSessionIntervalMs, 10000, 300000),
+        globalIntervalMs: requireInt('weixin.notify.globalIntervalMs', merged.weixin.notify.globalIntervalMs, 5000, 120000),
+        maxPerHour: requireInt('weixin.notify.maxPerHour', merged.weixin.notify.maxPerHour, 5, 100),
       },
       approval: {
         maxPerHour: requireInt('weixin.approval.maxPerHour', merged.weixin.approval.maxPerHour, 1, 1000),

@@ -878,8 +878,30 @@ export class Gateway {
       if (!peer.local) throw new GatewayError(CODES.PERMISSION_DENIED)
       if (!this.weixinNotifier) throw new GatewayError(CODES.NOT_SUPPORTED)
       const body = await this.#readJson(req)
-      if (typeof body.enabled !== 'boolean') throw new GatewayError(CODES.INVALID_PARAMS)
-      this.#sendJson(req, res, CODES.SUCCESS, await this.weixinNotifier.setEnabled(body.enabled))
+      const patch: {
+        debounceMs?: number
+        perSessionIntervalMs?: number
+        globalIntervalMs?: number
+        maxPerHour?: number
+      } = {}
+      const fields = ['debounceMs', 'perSessionIntervalMs', 'globalIntervalMs', 'maxPerHour'] as const
+      for (const field of fields) {
+        const value = body[field]
+        if (value === undefined) continue
+        if (typeof value !== 'number' || !Number.isInteger(value)) throw new GatewayError(CODES.INVALID_PARAMS)
+        patch[field] = value
+      }
+      const hasPolicy = fields.some((field) => body[field] !== undefined)
+      if (typeof body.enabled !== 'boolean' && !hasPolicy) throw new GatewayError(CODES.INVALID_PARAMS)
+      if (typeof body.enabled === 'boolean') await this.weixinNotifier.setEnabled(body.enabled)
+      if (hasPolicy) {
+        try {
+          await this.weixinNotifier.setPolicy(patch)
+        } catch {
+          throw new GatewayError(CODES.INVALID_PARAMS)
+        }
+      }
+      this.#sendJson(req, res, CODES.SUCCESS, this.weixinNotifier.status())
       return
     }
 

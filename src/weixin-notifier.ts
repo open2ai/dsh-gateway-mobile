@@ -59,12 +59,15 @@ export interface WeixinNotifyHistoryEntry {
   text: string
 }
 
-export interface WeixinNotifyStatus {
-  enabled: boolean
+export interface WeixinNotifyPolicy {
   debounceMs: number
   perSessionIntervalMs: number
   globalIntervalMs: number
   maxPerHour: number
+}
+
+export interface WeixinNotifyStatus extends WeixinNotifyPolicy {
+  enabled: boolean
   recent: WeixinNotifyHistoryEntry[]
 }
 
@@ -72,6 +75,7 @@ interface StateFile {
   version: 1
   enabled: boolean
   history: WeixinNotifyHistoryEntry[]
+  policy?: WeixinNotifyPolicy
 }
 
 interface Watcher {
@@ -142,6 +146,20 @@ export class WeixinNotifier {
     else this.stopLoops()
     await this.saveState()
     this.logger.audit({ action: 'weixin.notify.toggle', enabled })
+    return this.status()
+  }
+
+  async setPolicy(patch: Partial<WeixinNotifyPolicy>): Promise<WeixinNotifyStatus> {
+    const next: WeixinNotifyPolicy = {
+      debounceMs: patch.debounceMs ?? this.config.debounceMs,
+      perSessionIntervalMs: patch.perSessionIntervalMs ?? this.config.perSessionIntervalMs,
+      globalIntervalMs: patch.globalIntervalMs ?? this.config.globalIntervalMs,
+      maxPerHour: patch.maxPerHour ?? this.config.maxPerHour,
+    }
+    assertPolicy(next)
+    Object.assign(this.config, next)
+    await this.saveState()
+    this.logger.audit({ action: 'weixin.notify.policy', ...next })
     return this.status()
   }
 
@@ -379,6 +397,9 @@ export class WeixinNotifier {
           if (isHistoryEntry(entry)) this.history.push(entry)
         }
       }
+      if (parsed.policy && isNotifyPolicy(parsed.policy)) {
+        Object.assign(this.config, parsed.policy)
+      }
       this.stateLoaded = true
     } catch {
       // No saved admin preference yet: use the profile default.
@@ -386,7 +407,17 @@ export class WeixinNotifier {
   }
 
   private async saveState(): Promise<void> {
-    const value: StateFile = { version: 1, enabled: this.enabled, history: this.history.slice(0, HISTORY_LIMIT) }
+    const value: StateFile = {
+      version: 1,
+      enabled: this.enabled,
+      history: this.history.slice(0, HISTORY_LIMIT),
+      policy: {
+        debounceMs: this.config.debounceMs,
+        perSessionIntervalMs: this.config.perSessionIntervalMs,
+        globalIntervalMs: this.config.globalIntervalMs,
+        maxPerHour: this.config.maxPerHour,
+      },
+    }
     await fsp.mkdir(path.dirname(this.stateFile), { recursive: true, mode: 0o700 })
     await fsp.writeFile(this.stateFile, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
   }
@@ -427,6 +458,39 @@ function isNotification(value: unknown): value is NotificationItem {
     typeof value.text === 'string' &&
     typeof value.at === 'number'
   )
+}
+
+function assertPolicy(policy: WeixinNotifyPolicy): void {
+  if (!Number.isInteger(policy.debounceMs) || policy.debounceMs < 3000 || policy.debounceMs > 30_000) {
+    throw new Error('debounceMs must be an integer between 3000 and 30000')
+  }
+  if (
+    !Number.isInteger(policy.perSessionIntervalMs) ||
+    policy.perSessionIntervalMs < 10_000 ||
+    policy.perSessionIntervalMs > 300_000
+  ) {
+    throw new Error('perSessionIntervalMs must be an integer between 10000 and 300000')
+  }
+  if (
+    !Number.isInteger(policy.globalIntervalMs) ||
+    policy.globalIntervalMs < 5000 ||
+    policy.globalIntervalMs > 120_000
+  ) {
+    throw new Error('globalIntervalMs must be an integer between 5000 and 120000')
+  }
+  if (!Number.isInteger(policy.maxPerHour) || policy.maxPerHour < 5 || policy.maxPerHour > 100) {
+    throw new Error('maxPerHour must be an integer between 5 and 100')
+  }
+}
+
+function isNotifyPolicy(value: unknown): value is WeixinNotifyPolicy {
+  if (!isRecord(value)) return false
+  try {
+    assertPolicy(value as unknown as WeixinNotifyPolicy)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function isHistoryEntry(value: unknown): value is WeixinNotifyHistoryEntry {

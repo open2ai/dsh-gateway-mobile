@@ -13,6 +13,8 @@ Ships the admin console and phone PWA pages (zh/en, dark/light) covering pairing
 - Added DSH approval forwarding to WeChat: agent-scoped prompts show a random approval ID and accept replies `允许 <id>` / `拒绝 <id>`, with timeout rejection and fail-closed handling.
 - Added inbound WeChat images: CDN download, dual-format AES-128-ECB key handling, media-type sniffing, attachment admission as DSH image prompt parts.
 - Changed WeChat QR binding to require loopback-admin approval: a confirmed scan stays pending with a masked account ID, full `ilink_user_id` is never persisted or logged, and only approval saves credentials and starts polling.
-- Added cross-session WeChat completion notifications: watches all top-level DSH sessions, merges completions for 5s, enforces 30s per-session and 10s global cooldowns, caps at 20/hour, skips child/WeChat sessions, and persists a pending outbox until a fresh `context_token` is available.
+- Added cross-session WeChat completion notifications: watches all top-level DSH sessions, merges completions for 5s, enforces 60s per-session and 15s global cooldowns, caps at 30/hour by default, skips child/WeChat sessions, and persists a pending outbox until a fresh `context_token` is available.
 - Added the admin WeChat notification switch and recent-delivery history, persisted in `weixin-notify-state.json`.
-- Added cross-session WeChat approvals with an independent 60/hour quota, separate approval history, and session/tool context in the prompt; approval prompts do not consume the 20/hour completion notification quota.
+- Added cross-session WeChat approvals with an independent 60/hour quota, separate approval history, and session/tool context in the prompt; approval prompts do not consume the 30/hour completion notification quota.
+- Changed the default completion-notification pacing to 5s merge / 60s per-session / 15s global / 30 per hour.
+- Added live completion-notification policy settings (merge window, per-session cooldown, global interval, hourly cap) persisted in `weixin-notify-state.json` and applied without a restart.

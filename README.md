@@ -32,7 +32,7 @@ Open `http://127.0.0.1:3081/mobile/admin` (alias `/admin`) on the computer, scan
 - One-time pairing codes, per-device HMAC sessions, sliding renewal
 - Device list with rename, single/batch revoke, permanent cleanup of revoked records, silent expiry
 - WeChat ClawBot/iLink channel: QR login stays pending until the loopback admin approves the scan, the full WeChat user ID is never persisted or logged, encrypted credential persistence, long-poll receive, text and inbound-image conversation with a dedicated DSH session, and approval prompts answerable in WeChat
-- Cross-session WeChat completion notifications: watches all top-level DSH sessions/workspaces, 5s merge window, 30s per-session cooldown, 10s global interval, hard cap 20/hour, and excludes the WeChat-created session
+- Cross-session WeChat completion notifications: watches all top-level DSH sessions/workspaces, 5s merge window, 60s per-session cooldown, 15s global interval, default cap 30/hour, and excludes the WeChat-created session; timing and hourly cap are editable in the admin UI and apply immediately
 - Cross-session approval notifications: any workspace approval can be answered from WeChat, with an independent 60/hour approval quota and a separate approval history (`weixin-approval-history.json`)
 - Admin console: overview, pairing, WeChat connect, devices, logs, settings
 - Mobile UI opens the official DSH Web UI; native chat UI and `/mobile/ws` chat protocol are deferred

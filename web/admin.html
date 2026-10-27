@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101113">
   <title>DSH Gateway · Admin</title>
   <link rel="icon" href="/mobile/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/mobile/assets/admin.css?v=53">
+  <link rel="stylesheet" href="/mobile/assets/admin.css?v=61">
 </head>
 <body class="app-body">
   <svg class="svg-sprite" aria-hidden="true" focusable="false">
@@ -323,11 +323,31 @@
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
                 </label>
               </div>
-              <div class="notify-rule-chips">
-                <span class="rule-chip">5 秒合并</span>
-                <span class="rule-chip">单会话 30 秒冷却</span>
-                <span class="rule-chip">全局 10 秒间隔</span>
-                <span class="rule-chip">每小时最多 20 条</span>
+              <div class="notify-policy-grid">
+                <label class="notify-policy-field">
+                  <span class="notify-policy-label"><span>合并窗口</span><output id="weixin-notify-debounce-value">5 秒</output></span>
+                  <input class="notify-policy-range" type="range" id="weixin-notify-debounce" min="3" max="30" step="1" value="5">
+                  <small class="notify-policy-default">范围 3–30 秒 · 默认 5 秒</small>
+                </label>
+                <label class="notify-policy-field">
+                  <span class="notify-policy-label"><span>单会话冷却</span><output id="weixin-notify-per-session-value">60 秒</output></span>
+                  <input class="notify-policy-range" type="range" id="weixin-notify-per-session" min="10" max="300" step="1" value="60">
+                  <small class="notify-policy-default">范围 10–300 秒 · 默认 60 秒</small>
+                </label>
+                <label class="notify-policy-field">
+                  <span class="notify-policy-label"><span>全局间隔</span><output id="weixin-notify-global-value">15 秒</output></span>
+                  <input class="notify-policy-range" type="range" id="weixin-notify-global" min="5" max="120" step="1" value="15">
+                  <small class="notify-policy-default">范围 5–120 秒 · 默认 15 秒</small>
+                </label>
+                <label class="notify-policy-field">
+                  <span class="notify-policy-label"><span>每小时上限</span><output id="weixin-notify-max-value">30 条</output></span>
+                  <input class="notify-policy-range" type="range" id="weixin-notify-max" min="5" max="100" step="1" value="30">
+                  <small class="notify-policy-default">范围 5–100 条 · 默认 30 条</small>
+                </label>
+              </div>
+              <div class="notify-policy-actions">
+                <button class="button primary" id="weixin-notify-save-policy" type="button">保存推送节奏</button>
+                <span class="hint">保存后立即生效，无需重启。</span>
               </div>
             </div>
           </div>
@@ -437,6 +457,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="/mobile/assets/admin.js?v=58"></script>
+  <script type="module" src="/mobile/assets/admin.js?v=61"></script>
 </body>
 </html>

@@ -22,6 +22,46 @@ function fakeController(sessions) {
   }
 }
 
+test('notifier applies and persists runtime policy', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-gw-notifier-policy-'))
+  const logger = new Logger({ level: 'error' })
+  const channel = { connected: true, lastInbound: undefined, sendText: async () => {} }
+  const options = {
+    channel,
+    controller: fakeController([]),
+    logger,
+    dataDir: dir,
+    config: { enabled: true, debounceMs: 5000, perSessionIntervalMs: 30000, globalIntervalMs: 10000, maxPerHour: 20 },
+  }
+  const notifier = new WeixinNotifier(options)
+  try {
+    const updated = await notifier.setPolicy({
+      debounceMs: 8000,
+      perSessionIntervalMs: 60000,
+      globalIntervalMs: 15000,
+      maxPerHour: 40,
+    })
+    assert.equal(updated.debounceMs, 8000)
+    assert.equal(updated.perSessionIntervalMs, 60000)
+    assert.equal(updated.globalIntervalMs, 15000)
+    assert.equal(updated.maxPerHour, 40)
+
+    const reloaded = new WeixinNotifier(options)
+    try {
+      await reloaded.start()
+      const restored = reloaded.status()
+      assert.equal(restored.debounceMs, 8000)
+      assert.equal(restored.perSessionIntervalMs, 60000)
+      assert.equal(restored.globalIntervalMs, 15000)
+      assert.equal(restored.maxPerHour, 40)
+    } finally {
+      reloaded.stop()
+    }
+  } finally {
+    notifier.stop()
+  }
+})
+
 test('notifier merges completed sessions into one WeChat message', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-gw-notifier-'))
   const logger = new Logger({ level: 'error' })
