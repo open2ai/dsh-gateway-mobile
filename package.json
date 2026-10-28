@@ -1,7 +1,7 @@
 {
   "name": "dsh-gateway-mobile",
   "version": "0.1.1",
-  "description": "Secure mobile access gateway for DSH: Cloudflare Quick Tunnel + one-time pairing + device-scoped auth + HTTP/WebSocket reverse proxy.",
+  "description": "Secure DSH mobile and WeChat gateway: Cloudflare Quick Tunnel, one-time pairing, WeChat ClawBot/iLink chat, approvals, questions, and notifications.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -47,7 +47,10 @@
     "dsh-plugin",
     "cloudflare-tunnel",
     "mobile",
-    "remote-access"
+    "remote-access",
+    "wechat",
+    "clawbot",
+    "ilink"
   ],
   "license": "MIT",
   "devDependencies": {
