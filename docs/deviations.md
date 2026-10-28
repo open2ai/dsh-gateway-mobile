@@ -14,7 +14,7 @@ back to the document.
 | `ctx.get('dsh/session')`, `ctx.get('apiproxy')` | Not part of the shipped web profile | Not used; the gateway is protocol-opaque |
 | `ctx.get('webserver')` / `apiProxy.serveStatic` | Service is `ctx.webServer`; static serving is owned by `dsh-host-frontend-static` | Gateway is a **sidecar HTTP server** on 3081 and serves its own `/mobile` pages |
 | `ctx.on('dsh/session-created')`, `approval-requested` | No such Cordis events in the base web profile | Deferred; the official DSH UI remains the source of approvals |
-| DSH `>=1.5.0`; `cordis.patch.yml` new API | Installed/verified `0.2.1-rc.2` | `engines.dsh: >=0.2.1-rc.2 <0.3.0`; bundle patch uses the current loader |
+| DSH `>=1.5.0`; `cordis.patch.yml` new API | Installed/verified `0.2.1-rc.4` | `engines.dsh: 0.2.1-rc.4`; bundle patch uses the current loader |
 | `package.json` `peerDependencies.dsh` | `dsh` is not a package name; the CLI is `@deepseek-ai/dsh` | `engines.dsh` range only |
 
 ## Cookie / auth

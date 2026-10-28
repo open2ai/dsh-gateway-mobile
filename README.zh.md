@@ -8,7 +8,7 @@
 
 ## 快速开始
 
-需要 DSH `0.2.1-rc.2`、Node 22+ 和 cloudflared（支持自动下载）。
+需要 DSH `0.2.1-rc.4`、Node 22+ 和 cloudflared（支持自动下载）。
 
 ```powershell
 npm install

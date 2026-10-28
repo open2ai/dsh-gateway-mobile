@@ -8,7 +8,7 @@ Status: **v0.1.1**. Quick Tunnel is a Cloudflare testing/development facility.
 
 ## Quick start
 
-Requires DSH `0.2.1-rc.2`, Node 22+, and cloudflared (auto-download fallback).
+Requires DSH `0.2.1-rc.4`, Node 22+, and cloudflared (auto-download fallback).
 
 ```powershell
 npm install
