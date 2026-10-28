@@ -52,8 +52,15 @@ export interface CordisContext {
       attachSession?(sessionId: string): Promise<void>
     }>
   }
-  on(event: string, listener: (request: unknown, next: () => Promise<WeixinApprovalOutcome>) => Promise<WeixinApprovalOutcome>): unknown
-  off(event: string, listener: (request: unknown, next: () => Promise<WeixinApprovalOutcome>) => Promise<WeixinApprovalOutcome>): unknown
+  userQuestions?: {
+    answer(agent: unknown, callId: string, answer: unknown): unknown
+  }
+  on(
+    event: string,
+    listener: (...args: any[]) => unknown,
+    options?: { prepend?: boolean },
+  ): unknown
+  off(event: string, listener: (...args: any[]) => unknown): unknown
   effect(callback: () => () => void | Promise<void>, label?: string): unknown
 }
 
@@ -137,6 +144,16 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
     resolveWorkspaceId: () => latestWorkspace()?.id,
     ensureWorkspace: workspaceSession,
     approvalMaxPerHour: config.weixin.approval.maxPerHour,
+    lateAnswer: (agent, callId, answer) => {
+      const service = ctx.userQuestions
+      if (!service) return false
+      try {
+        const result = service.answer(agent, callId, answer)
+        return result instanceof Promise ? result.then((value) => value === true) : result === true
+      } catch {
+        return false
+      }
+    },
   })
   const weixinNotifier = new WeixinNotifier({
     channel: weixin,

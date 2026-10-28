@@ -50,6 +50,12 @@ export interface SessionControllerLike {
   rename?(request: { sessionId: string; title: string }): Promise<unknown>
 }
 
+export type WeixinApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+
+interface UserQuestionAnswer {
+  answers: Array<{ id: string; selected: string[]; custom?: string }>
+}
+
 export interface WeixinBridgeOptions {
   channel: WeixinChannel
   controller: SessionControllerLike | undefined
@@ -60,6 +66,7 @@ export interface WeixinBridgeOptions {
   resolveWorkspaceId?: () => string | undefined
   ensureWorkspace?: (sessionId: string) => Promise<void>
   approvalMaxPerHour?: number
+  lateAnswer?: (agent: unknown, callId: string, answer: UserQuestionAnswer) => boolean | Promise<boolean>
 }
 
 export type WeixinApprovalHistoryStatus =
@@ -80,17 +87,53 @@ export interface WeixinApprovalHistoryEntry {
 }
 
 export interface CordisEventSource {
-  on(event: string, listener: (request: unknown, next: () => Promise<WeixinApprovalOutcome>) => Promise<WeixinApprovalOutcome>): unknown
-  off(event: string, listener: (request: unknown, next: () => Promise<WeixinApprovalOutcome>) => Promise<WeixinApprovalOutcome>): unknown
+  on(event: string, listener: (...args: any[]) => unknown, options?: { prepend?: boolean }): unknown
+  off(event: string, listener: (...args: any[]) => unknown): unknown
 }
-
-export type WeixinApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
 
 interface PendingApproval {
   id: string
   owner: string
   contextToken: string
   resolve: (outcome: WeixinApprovalOutcome) => void
+  timer: ReturnType<typeof setTimeout>
+  removeAbort: () => void
+}
+
+interface UserQuestionOptionLike {
+  label: string
+  description?: string
+}
+
+interface UserQuestionItemLike {
+  id: string
+  question: string
+  detail?: string
+  header?: string
+  options?: UserQuestionOptionLike[]
+  multiSelect?: boolean
+}
+
+interface UserQuestionRequestLike {
+  questions: UserQuestionItemLike[]
+  agent?: unknown
+  signal?: AbortSignal
+  wait?: { callId: string; timed?: boolean }
+}
+
+interface PendingUserQuestion {
+  id: string
+  owner: string
+  contextToken: string
+  items: UserQuestionItemLike[]
+  answers: Array<{ id: string; selected: string[]; custom?: string }>
+  index: number
+  sessionId?: string
+  agent?: unknown
+  callId?: string
+  timed: boolean
+  late: boolean
+  resolve: (answer: UserQuestionAnswer) => void
   timer: ReturnType<typeof setTimeout>
   removeAbort: () => void
 }
@@ -105,6 +148,8 @@ interface ApprovalRequestLike {
 
 const TURN_TIMEOUT_MS = 180_000
 const APPROVAL_TIMEOUT_MS = 120_000
+const QUESTION_TIMEOUT_MS = 300_000
+const LATE_QUESTION_EXPIRY_MS = 30 * 60_000
 const APPROVAL_ID_LENGTH = 4
 
 interface SessionFile {
@@ -123,15 +168,20 @@ export class WeixinBridge {
   private readonly ensureWorkspace: ((sessionId: string) => Promise<void>) | undefined
   private readonly approvalMaxPerHour: number
   private readonly approvalHistoryFile: string
+  private readonly lateAnswer:
+    | ((agent: unknown, callId: string, answer: UserQuestionAnswer) => boolean | Promise<boolean>)
+    | undefined
   private readonly approvalHistory: WeixinApprovalHistoryEntry[] = []
   private readonly approvalSentTimes: number[] = []
   private sessionId = ''
   private lastUserId = ''
   private queue: Promise<void> = Promise.resolve()
   private pendingApproval: PendingApproval | null = null
+  private pendingQuestion: PendingUserQuestion | null = null
   private approvalListener:
     | ((request: unknown, next: () => Promise<WeixinApprovalOutcome>) => Promise<WeixinApprovalOutcome>)
     | undefined
+  private questionListener: ((request: unknown, next: () => Promise<unknown>) => Promise<unknown>) | undefined
 
   constructor(options: WeixinBridgeOptions) {
     this.channel = options.channel
@@ -144,6 +194,7 @@ export class WeixinBridge {
     this.ensureWorkspace = options.ensureWorkspace
     this.approvalMaxPerHour = options.approvalMaxPerHour ?? 60
     this.approvalHistoryFile = path.join(options.dataDir, 'weixin-approval-history.json')
+    this.lateAnswer = options.lateAnswer
   }
 
   async start(): Promise<void> {
@@ -152,6 +203,7 @@ export class WeixinBridge {
       // Approval replies must bypass the turn queue; the queued DSH turn is blocked
       // waiting for this decision.
       if (this.handleApprovalReply(message)) return
+      if (this.handleQuestionReply(message)) return
       this.enqueue(message)
     }
     this.channel.onCredentialsChanged = () => {
@@ -170,7 +222,9 @@ export class WeixinBridge {
     }
     if (this.events) {
       this.approvalListener = (request, next) => this.handleApproval(request, next)
-      this.events.on('approval/request', this.approvalListener)
+      this.events.on('approval/request', this.approvalListener, { prepend: true })
+      this.questionListener = (request, next) => this.handleUserQuestion(request, next)
+      this.events.on('user-questions/request', this.questionListener, { prepend: true })
     }
     if (this.controller) {
       this.logger.info(`WeChat DSH bridge ready (${this.sessionId || 'new session'})`)
@@ -193,13 +247,19 @@ export class WeixinBridge {
     if (this.events && this.approvalListener) {
       this.events.off('approval/request', this.approvalListener)
     }
+    if (this.events && this.questionListener) {
+      this.events.off('user-questions/request', this.questionListener)
+    }
     this.approvalListener = undefined
+    this.questionListener = undefined
     this.resolveApproval('cancelled', false)
+    this.resolveQuestion(undefined)
   }
 
   /** Called when the bound WeChat account logs out or is replaced. */
   async resetSession(): Promise<void> {
     this.resolveApproval('cancelled', false)
+    this.resolveQuestion(undefined)
     this.sessionId = ''
     await fsp.rm(this.file, { force: true })
     this.logger.info('WeChat DSH session reset; next message creates a new session')
@@ -216,6 +276,7 @@ export class WeixinBridge {
   private async handle(message: WeixinInbound): Promise<void> {
     this.lastUserId = message.userId
     if (this.handleApprovalReply(message)) return
+    if (this.handleQuestionReply(message)) return
     if (!this.controller) {
       this.logger.warn('WeChat message received but DSH bridge is unavailable')
       return
@@ -241,10 +302,13 @@ export class WeixinBridge {
     const contextToken = owner
       ? this.channel.contextFor(owner) ?? this.channel.lastInbound?.contextToken
       : undefined
-    if (!owner || !contextToken) return 'unavailable'
-    if (this.pendingApproval) {
-      this.logger.warn('Another WeChat approval is already pending; failing closed')
-      return 'unavailable'
+    if (!owner || !contextToken) {
+      this.logger.warn('Cannot forward approval to WeChat: no inbound context token; delegating to web UI')
+      return next()
+    }
+    if (this.pendingApproval || this.pendingQuestion) {
+      this.logger.warn('Another WeChat interaction is already pending; delegating approval to web UI')
+      return next()
     }
 
     const now = Date.now()
@@ -253,21 +317,21 @@ export class WeixinBridge {
       this.approvalSentTimes.shift()
     }
     if (this.approvalSentTimes.length >= this.approvalMaxPerHour) {
-      this.logger.warn(`WeChat approval quota reached (${this.approvalMaxPerHour}/hour); failing closed`)
-      return 'unavailable'
+      this.logger.warn(`WeChat approval quota reached (${this.approvalMaxPerHour}/hour); delegating to web UI`)
+      return next()
     }
 
     const sessionId = agentSessionId(req.agent) ?? ''
     const id = approvalId()
     const reason = req.displayReason?.zh || req.displayReason?.en || req.reason || '工具请求执行'
     const text = [
-      `⚠️ 需要审批 #${id}`,
+      '⚠️ 需要审批',
       `会话：${shortSessionId(sessionId)}`,
       `工具：${req.toolName}`,
       `原因：${reason.slice(0, 400)}`,
       '',
-      `回复：允许 ${id}`,
-      `或：拒绝 ${id}`,
+      '回复：Y 允许',
+      '或：N 拒绝',
     ].join('\n')
 
     const entry: WeixinApprovalHistoryEntry = {
@@ -306,7 +370,7 @@ export class WeixinBridge {
       }
       const timer = setTimeout(() => {
         finish('rejected', 'timeout')
-        void this.channel.sendText(owner, `审批 #${id} 已超时，已自动拒绝。`, contextToken).catch(() => {})
+        void this.channel.sendText(owner, '审批已超时，已自动拒绝。', contextToken).catch(() => {})
       }, APPROVAL_TIMEOUT_MS)
       const onAbort = (): void => finish('cancelled', 'cancelled')
       req.signal?.addEventListener('abort', onAbort, { once: true })
@@ -321,24 +385,214 @@ export class WeixinBridge {
     })
   }
 
+  private async handleUserQuestion(
+    request: unknown,
+    next: () => Promise<unknown>,
+  ): Promise<unknown> {
+    const req = userQuestionRequestOf(request)
+    if (!req || req.questions.length === 0) return next()
+    const owner = this.lastUserId || this.channel.lastInbound?.userId
+    const contextToken = owner
+      ? this.channel.contextFor(owner) ?? this.channel.lastInbound?.contextToken
+      : undefined
+    if (!owner || !contextToken) {
+      this.logger.warn('Cannot forward user question to WeChat: no inbound context token; delegating to web UI')
+      return next()
+    }
+    if (this.pendingApproval || this.pendingQuestion) {
+      this.logger.warn('Another WeChat interaction is already pending; delegating user question to web UI')
+      return next()
+    }
+
+    const id = approvalId()
+    const sessionId = agentSessionId(req.agent)
+    const timed = req.wait?.timed === true && typeof req.wait.callId === 'string'
+    const pending: PendingUserQuestion = {
+      id,
+      owner,
+      contextToken,
+      items: req.questions,
+      answers: [],
+      index: 0,
+      ...(sessionId ? { sessionId } : {}),
+      ...(req.agent === undefined ? {} : { agent: req.agent }),
+      ...(typeof req.wait?.callId === 'string' ? { callId: req.wait.callId } : {}),
+      timed,
+      late: false,
+      timer: setTimeout(() => {}, 0),
+      removeAbort: () => {},
+      resolve: () => {},
+    }
+
+    try {
+      await this.sendQuestionPrompt(pending)
+    } catch (error) {
+      this.logger.warn(`Failed to send WeChat question prompt: ${errorMessage(error)}`)
+      return next()
+    }
+    this.logger.audit({ action: 'weixin.question.sent', id, count: req.questions.length, timed })
+    this.pendingQuestion = pending
+
+    return new Promise<unknown>((resolve, reject) => {
+      const finish = (answer: UserQuestionAnswer): void => {
+        const active = this.pendingQuestion
+        if (!active) return
+        clearTimeout(active.timer)
+        active.removeAbort()
+        this.pendingQuestion = null
+        active.resolve(answer)
+      }
+      pending.resolve = (answer) => resolve(answer)
+      const markLate = (): void => {
+        const active = this.pendingQuestion
+        if (!active || active.late) return
+        clearTimeout(active.timer)
+        active.late = true
+        active.timer = setTimeout(() => this.expireLateQuestion(active), LATE_QUESTION_EXPIRY_MS)
+        void this.channel
+          .sendText(owner, '问题已超出前台等待，仍可在微信继续回答；也可以在网页补答。', contextToken)
+          .catch(() => {})
+      }
+      pending.timer = setTimeout(() => {
+        const active = this.pendingQuestion
+        if (!active) return
+        if (active.timed) {
+          markLate()
+          const reason = req.signal?.reason
+          reject(reason instanceof Error ? reason : new Error('ask_user_question timed out before the user answered'))
+          return
+        }
+        clearTimeout(active.timer)
+        active.removeAbort()
+        this.pendingQuestion = null
+        void this.channel
+          .sendText(owner, '问题已超时，交给网页继续处理。', contextToken)
+          .catch(() => {})
+        void Promise.resolve()
+          .then(next)
+          .then(resolve, () => resolve(skippedAnswers(req.questions)))
+      }, QUESTION_TIMEOUT_MS)
+      const onAbort = (): void => {
+        if (pending.timed) {
+          markLate()
+          const reason = req.signal?.reason
+          reject(reason instanceof Error ? reason : new Error('ask_user_question timed out before the user answered'))
+          return
+        }
+        finish(skippedAnswers(req.questions))
+      }
+      pending.removeAbort = () => req.signal?.removeEventListener('abort', onAbort)
+      req.signal?.addEventListener('abort', onAbort, { once: true })
+    })
+  }
+
+  private handleQuestionReply(message: WeixinInbound): boolean {
+    const pending = this.pendingQuestion
+    if (!pending) return false
+    const text = message.text.trim()
+    if (!text) return false
+    const item = pending.items[pending.index]
+    if (!item) return false
+    const answer = parseQuestionReply(text, item)
+    if (!answer) {
+      void this.channel
+        .sendText(message.userId, `回复无效，请回复选项序号或文字（当前问题 ${pending.index + 1}/${pending.items.length}）。`, message.contextToken)
+        .catch(() => {})
+      return true
+    }
+    pending.answers.push(answer)
+    pending.index += 1
+    if (pending.index < pending.items.length) {
+      void this.sendQuestionPrompt(pending).catch((error: unknown) => {
+        this.logger.warn(`Failed to send next WeChat question: ${errorMessage(error)}`)
+        this.resolveQuestion({
+          answers: [...pending.answers, ...skippedAnswers(pending.items.slice(pending.index)).answers],
+        })
+      })
+      return true
+    }
+    if (pending.late && pending.timed) {
+      void this.submitLateAnswer(pending, { answers: pending.answers }, message.contextToken)
+      return true
+    }
+    this.resolveQuestion({ answers: pending.answers })
+    void this.channel
+      .sendText(pending.owner, '已收到回答。', message.contextToken)
+      .catch(() => {})
+    this.logger.audit({ action: 'weixin.question.answered', id: pending.id, count: pending.answers.length })
+    return true
+  }
+
+  private async submitLateAnswer(
+    pending: PendingUserQuestion,
+    answer: UserQuestionAnswer,
+    contextToken: string,
+  ): Promise<void> {
+    let delivered = false
+    if (pending.callId && pending.agent !== undefined && this.lateAnswer) {
+      try {
+        delivered = await this.lateAnswer(pending.agent, pending.callId, answer)
+      } catch (error) {
+        this.logger.warn(`Failed to submit late WeChat answer: ${errorMessage(error)}`)
+      }
+    }
+    this.resolveQuestion(delivered ? answer : undefined)
+    void this.channel
+      .sendText(
+        pending.owner,
+        delivered ? '已回答，DSH 已收到补答。' : '问题已失效，请在网页处理。',
+        contextToken,
+      )
+      .catch(() => {})
+    this.logger.audit({ action: 'weixin.question.late-answer', id: pending.id, delivered })
+  }
+
+  private expireLateQuestion(pending: PendingUserQuestion): void {
+    if (this.pendingQuestion !== pending) return
+    clearTimeout(pending.timer)
+    pending.removeAbort()
+    this.pendingQuestion = null
+    pending.resolve(skippedAnswers(pending.items))
+    void this.channel
+      .sendText(pending.owner, '问题已过期，请在网页处理。', pending.contextToken)
+      .catch(() => {})
+  }
+
+  private async sendQuestionPrompt(pending: PendingUserQuestion): Promise<void> {
+    const item = pending.items[pending.index]
+    if (!item) return
+    const text = questionPrompt(item, pending.index, pending.items.length, pending.sessionId)
+    await this.channel.sendText(pending.owner, text, pending.contextToken)
+  }
+
+  private resolveQuestion(
+    answer?: { answers: Array<{ id: string; selected: string[]; custom?: string }> },
+  ): void {
+    const pending = this.pendingQuestion
+    if (!pending) return
+    clearTimeout(pending.timer)
+    pending.removeAbort()
+    this.pendingQuestion = null
+    pending.resolve(answer ?? skippedAnswers(pending.items))
+  }
+
   private handleApprovalReply(message: WeixinInbound): boolean {
     const pending = this.pendingApproval
     if (!pending) return false
     const text = message.text.trim()
-    const id = escapeRegExp(pending.id)
-    if (new RegExp(`^(允许|同意|approve)\\s*#?${id}$`, 'i').test(text)) {
+    if (/^(允许|同意|approve|y|yes|ok)\b/i.test(text)) {
       this.finishApproval('allowed-once')
-      void this.channel.sendText(pending.owner, `已允许 #${pending.id}，继续执行。`, message.contextToken).catch(() => {})
+      void this.channel.sendText(pending.owner, '已允许，继续执行。', message.contextToken).catch(() => {})
       return true
     }
-    if (new RegExp(`^(拒绝|deny|reject)\\s*#?${id}$`, 'i').test(text)) {
+    if (/^(拒绝|deny|reject|n|no)\b/i.test(text)) {
       this.finishApproval('rejected')
-      void this.channel.sendText(pending.owner, `已拒绝 #${pending.id}。`, message.contextToken).catch(() => {})
+      void this.channel.sendText(pending.owner, '已拒绝。', message.contextToken).catch(() => {})
       return true
     }
-    if (/^(允许|同意|拒绝|approve|deny|reject)/i.test(text)) {
+    if (/^(允许|同意|拒绝|approve|deny|reject|y|yes|n|no)/i.test(text)) {
       void this.channel
-        .sendText(message.userId, `审批编号不匹配，请回复：允许 ${pending.id} 或 拒绝 ${pending.id}`, message.contextToken)
+        .sendText(message.userId, '请回复：Y 允许 或 N 拒绝', message.contextToken)
         .catch(() => {})
       return true
     }
@@ -529,6 +783,107 @@ function shortSessionId(sessionId: string): string {
   return sessionId.length > 18 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-6)}` : sessionId
 }
 
+function userQuestionRequestOf(value: unknown): UserQuestionRequestLike | null {
+  if (!isRecord(value) || !Array.isArray(value.questions)) return null
+  const questions: UserQuestionItemLike[] = []
+  for (const item of value.questions) {
+    if (!isRecord(item) || typeof item.id !== 'string' || typeof item.question !== 'string') return null
+    const options: UserQuestionOptionLike[] = []
+    if (item.options !== undefined) {
+      if (!Array.isArray(item.options)) return null
+      for (const option of item.options) {
+        if (!isRecord(option) || typeof option.label !== 'string') return null
+        options.push({
+          label: option.label,
+          ...(typeof option.description === 'string' ? { description: option.description } : {}),
+        })
+      }
+    }
+    questions.push({
+      id: item.id,
+      question: item.question,
+      ...(typeof item.detail === 'string' ? { detail: item.detail } : {}),
+      ...(typeof item.header === 'string' ? { header: item.header } : {}),
+      ...(options.length ? { options } : {}),
+      ...(item.multiSelect === true ? { multiSelect: true } : {}),
+    })
+  }
+  return {
+    questions,
+    ...(value.agent === undefined ? {} : { agent: value.agent }),
+    ...(value.signal instanceof AbortSignal ? { signal: value.signal } : {}),
+    ...(isRecord(value.wait) && typeof value.wait.callId === 'string'
+      ? { wait: { callId: value.wait.callId, ...(value.wait.timed === true ? { timed: true } : {}) } }
+      : {}),
+  }
+}
+
+function questionPrompt(
+  item: UserQuestionItemLike,
+  index: number,
+  total: number,
+  sessionId?: string,
+): string {
+  const options = item.options ?? []
+  const lines = [
+    `❓ 需要回答${total > 1 ? ` (${index + 1}/${total})` : ''}`,
+    ...(sessionId ? [`会话：${shortSessionId(sessionId)}`] : []),
+    ...(item.header ? [`标题：${item.header}`] : []),
+    `问题：${item.question}`,
+    ...(item.detail ? [`说明：${item.detail.slice(0, 500)}`] : []),
+  ]
+  for (const [optionIndex, option] of options.entries()) {
+    lines.push(`${optionIndex + 1}. ${option.label}${option.description ? ` — ${option.description}` : ''}`)
+  }
+  if (item.multiSelect) {
+    lines.push('', '可多选，回复序号用逗号分隔（例如 1,3），也可以直接回复文字。')
+  } else {
+    lines.push('', options.length ? '回复选项序号或直接回复文字。' : '直接回复文字。')
+  }
+  lines.push('回复“跳过”跳过本题。')
+  return lines.join('\n')
+}
+
+function parseQuestionReply(
+  text: string,
+  item: UserQuestionItemLike,
+): { id: string; selected: string[]; custom?: string } | null {
+  if (/^(跳过|skip)$/i.test(text)) return { id: item.id, selected: [] }
+  const options = item.options ?? []
+  if (item.multiSelect) {
+    const exact = options.find((option) => option.label === text)
+    if (exact) return { id: item.id, selected: [exact.label] }
+    const selected: string[] = []
+    const unknown: string[] = []
+    for (const part of text.split(/[,，、\s]+/).filter(Boolean)) {
+      const position = /^\d+$/.test(part) ? Number(part) - 1 : -1
+      const option = position >= 0 ? options[position] : options.find((entry) => entry.label === part)
+      if (option && !selected.includes(option.label)) selected.push(option.label)
+      else if (!option) unknown.push(part)
+    }
+    if (selected.length === 0) return { id: item.id, selected: [], custom: text.slice(0, 2000) }
+    return {
+      id: item.id,
+      selected,
+      ...(unknown.length ? { custom: unknown.join(' ').slice(0, 2000) } : {}),
+    }
+  }
+  if (/^\d+$/.test(text)) {
+    const option = options[Number(text) - 1]
+    return option ? { id: item.id, selected: [option.label] } : null
+  }
+  const option = options.find((entry) => entry.label === text)
+  if (option) return { id: item.id, selected: [option.label] }
+  return { id: item.id, selected: [], custom: text.slice(0, 2000) }
+}
+
+function skippedAnswers(item: UserQuestionItemLike | UserQuestionItemLike[]): {
+  answers: Array<{ id: string; selected: string[]; custom?: string }>
+} {
+  const items = Array.isArray(item) ? item : [item]
+  return { answers: items.map((entry) => ({ id: entry.id, selected: [] })) }
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -565,8 +920,4 @@ function approvalId(): string {
   let value = ''
   for (const byte of bytes) value += alphabet[byte % alphabet.length]
   return value
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

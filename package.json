@@ -1,6 +1,6 @@
 {
   "name": "dsh-gateway-mobile",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Secure mobile access gateway for DSH: Cloudflare Quick Tunnel + one-time pairing + device-scoped auth + HTTP/WebSocket reverse proxy.",
   "type": "module",
   "main": "lib/index.js",
