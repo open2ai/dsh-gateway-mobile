@@ -223,6 +223,8 @@ function createTabController(): (name: TabName) => void {
     if (name === 'weixin') void loadWeixinStatus()
     if (name === 'weixin') void loadWeixinNotify()
     if (name === 'weixin') void loadWeixinApprovals()
+    if (name === 'weixin') startWeixinLiveRefresh()
+    else stopWeixinLiveRefresh()
     if (name !== 'weixin') clearWeixinPoll()
     if (name === 'overview') void loadOverview()
   }
@@ -1326,6 +1328,23 @@ async function pollWeixinLogin(): Promise<void> {
 let weixinHistoryExpanded = false
 let weixinHistoryItems: WeixinNotifyPayload['recent'] = []
 let weixinHistorySelected = 0
+let weixinLiveTimer: ReturnType<typeof setInterval> | undefined
+
+function startWeixinLiveRefresh(): void {
+  stopWeixinLiveRefresh()
+  weixinLiveTimer = setInterval(() => {
+    if (document.hidden) return
+    void loadWeixinNotify()
+    void loadWeixinApprovals()
+  }, 15_000)
+}
+
+function stopWeixinLiveRefresh(): void {
+  if (weixinLiveTimer !== undefined) {
+    clearInterval(weixinLiveTimer)
+    weixinLiveTimer = undefined
+  }
+}
 
 function selectWeixinHistory(index: number): void {
   weixinHistorySelected = index
