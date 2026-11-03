@@ -2,6 +2,10 @@
 
 [English](./CHANGELOG.md) | [中文](./CHANGELOG.zh.md)
 
+## 0.1.2 - 2026-11-03
+
+- 适配 DSH `0.2.1-rc.5`，插件版本升级到 `0.1.2`。
+
 ## 0.1.0 — 2026-10-23
 
 DSH Gateway Mobile 插件的首个可用版本：回环网关 + Cloudflare Quick Tunnel，一次性设备配对、HMAC 会话 Cookie，以及 HTTP/WebSocket 反向代理。

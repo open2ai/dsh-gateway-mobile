@@ -2,6 +2,10 @@
 
 [English](./CHANGELOG.md) | [中文](./CHANGELOG.zh.md)
 
+## 0.1.2 - 2026-11-03
+
+- Added compatibility with DSH `0.2.1-rc.5`; bumped the plugin to `0.1.2`.
+
 ## 0.1.0 — 2026-10-23
 
 First working implementation of the DSH Gateway Mobile plugin: a loopback gateway with Cloudflare Quick Tunnel, one-time device pairing, HMAC cookie sessions, and HTTP/WebSocket reverse proxying for DSH.
