@@ -2,6 +2,10 @@
 
 [English](./CHANGELOG.md) | [中文](./CHANGELOG.zh.md)
 
+## 0.1.3 - 2026-11-05
+
+- Added compatibility with DSH `0.2.2-rc.1`; bumped the plugin to `0.1.3`.
+
 ## 0.1.2 - 2026-11-03
 
 - Added compatibility with DSH `0.2.1-rc.5`; bumped the plugin to `0.1.2`.

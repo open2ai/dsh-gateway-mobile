@@ -28,15 +28,15 @@ Use the in-app directory browser instead of the native chooser.
 
 ### 1. Install the matching browse backend
 
-The version must match the running DSH runtime. `dsh 0.2.1-rc.5` uses
-`@deepseek-ai/dsh-host-directory-picker-browse@0.2.1-rc.5`:
+The version must match the running DSH runtime. `dsh 0.2.2-rc.1` uses
+`@deepseek-ai/dsh-host-directory-picker-browse@0.2.2-rc.1`:
 
 ```powershell
-dsh plugin --profile web add @deepseek-ai/dsh-host-directory-picker-browse@0.2.1-rc.5
+dsh plugin --profile web add @deepseek-ai/dsh-host-directory-picker-browse@0.2.2-rc.1
 ```
 
 Do **not** use the unversioned package name. The npm `latest` tag currently
-points at an older build, which is rejected by `dsh 0.2.1-rc.5` as incompatible.
+points at an older build, which is rejected by `dsh 0.2.2-rc.1` as incompatible.
 
 The package is installed as a plain profile dependency; the warning
 `declares no dsh.bundle` is expected.
