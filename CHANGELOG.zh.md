@@ -12,7 +12,7 @@
 - **消息可靠性**：微信入站按 `message_id` 去重；无待审批/待回答时 `Y/N/数字` 回复被拦截并提示；完成通知改发 owner context，失败分类、指数退避、永久失败可见。
 - **配对连续性**：配对 payload 增加 `status`、`previousUrl`、`urlChangedAt`；管理后台在 URL 变化时显示重新配对横幅，配对码过期自动刷新。
 - **认证收口**：新增 `auth.oauthAllowedUsers` 白名单（错误码 4010）；`secret-keys.json` 多密钥 + kid + `POST /admin/key/rotate` 轮换（旧 session/密文继续有效）；配对码不再明文进日志。
-- **可选依赖**：`inject` 只保留 `webServer`/`connection`，`sessionController`/`workspaceRegistry`/`userQuestions` 改为能力探测，缺失时降级并在后台显示能力矩阵。
+- **服务依赖**：`inject` 保留 `webServer`/`connection` 以及微信桥接与工作区解析必需的 `sessionController`/`workspaceRegistry`（Cordis 没有 optional inject 形式，`ctx.get()` 看不到未声明的同辈服务）；`userQuestions` 作为可选能力探测，能力矩阵展示实际解析结果。
 - **运维**：`/health?deep=1` 分项健康检查（可选/必需区分，异常返回 503）；`GET /admin/audit` 过滤导出；`GET /admin/capabilities`；日志异步写入 + 按大小轮转；`npm run doctor` 自检脚本；`npm run hmr-check` HMR 冒烟脚本。
 - **Named Tunnel**：真实 connector 健康检查（metrics `/ready`），超时标记 degraded 而不是假装 connected；URL 变化会记录并广播。
 - **路由拆分**：网关 API 拆到 `src/routes/*`（public/session/devices/admin/weixin/oauth），`gateway.ts` 只保留请求准入、鉴权、静态资源、WebSocket 与代理编排。
@@ -20,7 +20,7 @@
 - **运行时开关**：设置页可在线开关隧道/微信、调整日志级别与 DSH 代理超时，立即生效并持久化到 `admin-settings.json`，重启后恢复。
 - **审计跨重启**：`/admin/audit` 合并内存 ring 与 `gateway.log`（含 .1..N 轮转文件），可导出更早进程的审计记录。
 - **文档与打包一致性**：新增 `npm run check-docs` 校验版本引用与分发包清单；`scripts/pack.mjs` 与 `package.json.files` 统一，zip 只包含与 npm 相同的文件。
-- **精简概览**：概览 = 状态 chips（网关/隧道/DSH/微信）+ 异常/能力提示，KPI 4 卡、快捷操作与 7 天请求图直接展示（去掉了「活动与统计」折叠头部）；能力矩阵、深度健康检查与隧道操作收进「帮助 → 诊断」；日志只在「日志」tab 展示。
+- **精简概览**：概览 = 状态 chips（网关/隧道/DSH/微信）+ 异常/能力提示，KPI 4 卡、快捷操作与请求趋势图（7/14/30 天可切换）直接展示（去掉了「活动与统计」折叠头部）；能力矩阵、深度健康检查与隧道操作收进「帮助 → 诊断」；日志只在「日志」tab 展示。
 - **文档中英双语**：`docs/` 下所有英文文档补齐 `*.zh.md` 中文版，文档顶部提供语言切换，新增 [docs/README.zh.md](docs/README.zh.md) 索引；README 增加文档入口。
 - 管理后台：概览拆为“运行状态/活动”，微信 tab 分区，新增“帮助”tab，并接入 deep health、审计导出、密钥轮换与能力矩阵。
 

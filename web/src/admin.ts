@@ -255,7 +255,7 @@ const PAGE_META: Record<TabName, [string, string]> = {
   devices: ['设备', '在线设备优先显示，可批量撤销或永久删除记录'],
   logs: ['日志', '最近的运行与审计事件，可导出审计 JSON'],
   settings: ['设置', '配对码、设备登录、运行开关与密钥轮换'],
-  help: ['帮助', '常见故障、版本能力与文档入口'],
+  help: ['帮助', '常见故障、版本能力与诊断'],
 }
 
 function setChip(id: string, text: string, ok: unknown): void {
@@ -340,7 +340,50 @@ async function loadOverview(): Promise<void> {
   await Promise.allSettled([loadDeepHealth(), loadActivityData()])
 }
 
-/** KPI cards and the 7-day chart, loaded from the compact /status payload. */
+const CHART_DAYS_KEY = 'dsh-admin-chart-days'
+const CHART_RANGES = [7, 14, 30] as const
+type ChartRange = (typeof CHART_RANGES)[number]
+
+function readChartDays(): ChartRange {
+  try {
+    const saved = Number(localStorage.getItem(CHART_DAYS_KEY))
+    if ((CHART_RANGES as readonly number[]).includes(saved)) return saved as ChartRange
+  } catch { /* storage may be blocked */ }
+  return 7
+}
+
+let chartDays: ChartRange = readChartDays()
+
+function updateChartRangeUi(): void {
+  const select = $<HTMLSelectElement>('#chart-range')
+  if (select) select.value = String(chartDays)
+  setText('#chart-sub', `最近 ${chartDays} 天 · 按天统计 · 单位：次`)
+  const spark = $('#spark')
+  if (spark) spark.setAttribute('aria-label', `近 ${chartDays} 天请求趋势`)
+}
+
+function setChartDays(days: ChartRange): void {
+  chartDays = days
+  try { localStorage.setItem(CHART_DAYS_KEY, String(days)) } catch { /* storage may be blocked */ }
+  updateChartRangeUi()
+  void loadChartData()
+}
+
+/** 7 days reuse the /status summary; longer ranges need /admin/stats?days=N. */
+async function loadChartData(): Promise<void> {
+  if (chartDays === 7) {
+    await loadActivityData()
+    return
+  }
+  try {
+    const stats = await api<StatsPayload>(`/mobile/api/v1/admin/stats?days=${chartDays}`)
+    renderSpark(stats)
+  } catch {
+    /* keep the previous chart when the range request fails */
+  }
+}
+
+/** KPI cards always come from /status; the chart follows the selected range. */
 async function loadActivityData(): Promise<void> {
   try {
     const status = await api<StatusPayload>('/mobile/api/v1/status')
@@ -349,11 +392,12 @@ async function loadActivityData(): Promise<void> {
     setText('#metric-active-foot', '已授权且未撤销')
     setText('#metric-online', String(status.onlineDevices ?? '-'))
     setText('#metric-today', String(stats.todayRequests ?? '-'))
-    setText('#metric-version', status.gateway?.version || deepHealth?.version || '-')
-    renderSpark(stats)
+    // Gateway version is shown on the Help tab; the overview keeps three KPIs.
+    if (chartDays === 7) renderSpark(stats)
   } catch {
     /* keep the previous KPI/chart values when /status is unavailable */
   }
+  if (chartDays !== 7) await loadChartData()
 }
 
 interface UptimeSnapshot {
@@ -822,9 +866,11 @@ function smoothPath(points: ChartPoint[]): string {
 function renderSpark(stats: StatsPayload): void {
   const container = $('#spark')
   const labels = $('#spark-labels')
+  const pointsLayer = $('#chart-points')
   if (!container || !labels) return
   container.replaceChildren()
   labels.replaceChildren()
+  if (pointsLayer) pointsLayer.replaceChildren()
   const daily = stats.daily ?? []
   const total = daily.reduce((sum, day) => sum + (Number(day.requests) || 0), 0)
   const peak = daily.reduce((best, day) => Math.max(best, Number(day.requests) || 0), 0)
@@ -855,7 +901,22 @@ function renderSpark(stats: StatsPayload): void {
     const y = (padTop + (height - padTop - padBottom) * ratio).toFixed(2)
     return `<line class="chart-axis" x1="${padX}" x2="${width - padX}" y1="${y}" y2="${y}" />`
   }).join('')
-  const circles = points.map((point) => `<circle class="chart-point" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="3.2" fill="var(--surface)" stroke="url(#lineGradient)" stroke-width="2"><title>${point.day.date}: ${point.day.requests} 次</title></circle>`).join('')
+  // Dots are HTML elements layered over the stretched SVG: an SVG circle would
+  // be distorted by preserveAspectRatio="none" and turn into an ellipse.
+  if (pointsLayer) {
+    pointsLayer.replaceChildren()
+    for (const [index, point] of points.entries()) {
+      const dot = el('span', {
+        class: 'chart-dot',
+        'data-index': String(index),
+        title: `${point.day.date}: ${point.day.requests} 次`,
+      })
+      dot.style.left = `${(point.x / width) * 100}%`
+      dot.style.top = `${(point.y / height) * 100}%`
+      pointsLayer.append(dot)
+    }
+  }
+  const dots = pointsLayer ? ([...pointsLayer.children] as HTMLElement[]) : []
   container.innerHTML = `
     <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="近 7 天请求趋势">
       <defs>
@@ -872,7 +933,6 @@ function renderSpark(stats: StatsPayload): void {
       <line class="chart-hover-line" id="chart-hover-line" x1="0" x2="0" y1="${padTop}" y2="${height - padBottom}" visibility="hidden" />
       <path d="${area}" fill="url(#areaGradient)" />
       <path d="${line}" fill="none" stroke="url(#lineGradient)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-      ${circles}
     </svg>`
   const yAxis = $('#chart-y')
   if (yAxis) {
@@ -889,8 +949,18 @@ function renderSpark(stats: StatsPayload): void {
     }
   }
 
-  for (const day of daily) {
-    labels.append(el('span', { text: day.date?.slice(5) ?? '' }))
+  // Thin out the date labels for 14/30-day ranges and position them under the
+  // matching data point (edges are clamped so they cannot overflow the panel).
+  const labelEvery = Math.max(1, Math.ceil(daily.length / 7))
+  for (const [index, day] of daily.entries()) {
+    if (index % labelEvery !== 0 && index !== daily.length - 1) continue
+    const point = points[index]
+    if (!point) continue
+    const label = el('span', { text: day.date?.slice(5) ?? '' })
+    label.style.left = `${(point.x / width) * 100}%`
+    if (index === 0) label.style.transform = 'translateX(0)'
+    else if (index === daily.length - 1) label.style.transform = 'translateX(-100%)'
+    labels.append(label)
   }
 
   const tip = $('#chart-tip')
@@ -900,15 +970,15 @@ function renderSpark(stats: StatsPayload): void {
     const point = points[index]
     if (!point) return
     const rect = container.getBoundingClientRect()
-    tip.textContent = `${point.day.requests} 次`
+    tip.textContent = `${point.day.date?.slice(5) ?? ''} · ${point.day.requests} 次`
     tip.hidden = false
     tip.style.left = `${(point.x / width) * rect.width}px`
     tip.style.top = `${(point.y / height) * rect.height - 10}px`
     hoverLine.setAttribute('x1', String(point.x))
     hoverLine.setAttribute('x2', String(point.x))
     hoverLine.setAttribute('visibility', 'visible')
-    for (const [dotIndex, circle] of container.querySelectorAll('circle.chart-point').entries()) {
-      circle.classList.toggle('active', dotIndex === index)
+    for (const [dotIndex, dot] of dots.entries()) {
+      dot.classList.toggle('active', dotIndex === index)
     }
   }
   const pick = (event: PointerEvent): void => {
@@ -921,7 +991,7 @@ function renderSpark(stats: StatsPayload): void {
   container.onpointerleave = () => {
     tip.hidden = true
     hoverLine.setAttribute('visibility', 'hidden')
-    for (const circle of container.querySelectorAll('circle.chart-point')) circle.classList.remove('active')
+    for (const dot of dots) dot.classList.remove('active')
   }
 }
 
@@ -2733,6 +2803,11 @@ $('#overview-status-chips')?.addEventListener('click', (event) => {
   const chip = target.closest<HTMLButtonElement>('.status-chip')
   if (chip?.dataset.state === 'bad') openDiagnostics()
 })
+$('#chart-range')?.addEventListener('change', (event) => {
+  const value = Number((event.target as HTMLSelectElement).value)
+  if ((CHART_RANGES as readonly number[]).includes(value)) setChartDays(value as ChartRange)
+})
+updateChartRangeUi()
 $('#help-diagnostics-details')?.addEventListener('toggle', (event) => {
   const details = event.target as HTMLDetailsElement
   if (details.open) void loadDeepHealth()

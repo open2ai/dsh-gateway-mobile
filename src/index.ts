@@ -31,8 +31,14 @@ import type { SessionControllerLike, WeixinApprovalOutcome } from './weixin-brid
 import { errorMessage } from './util.js'
 
 export const name = 'dsh-gateway-mobile'
-/** Only the two services the gateway itself cannot run without. */
-export const inject = ['webServer', 'connection']
+/**
+ * The gateway needs `webServer`/`connection`; the WeChat bridge and workspace
+ * resolver need `sessionController`/`workspaceRegistry`. Cordis has no optional
+ * dependency form, and `ctx.get()` cannot see a sibling-provided service without
+ * the inject declaration, so these stay required. `userQuestions` remains an
+ * optional, probed capability (it only affects late answers).
+ */
+export const inject = ['webServer', 'connection', 'sessionController', 'workspaceRegistry']
 
 const packageJson = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')) as { version: string }
 export const version: string = packageJson.version

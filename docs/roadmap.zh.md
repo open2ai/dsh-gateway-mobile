@@ -54,6 +54,7 @@
 
 - **问题**：`src/index.ts` 的 `inject = ['webServer', 'connection', 'sessionController', 'workspaceRegistry']`。Cordis 4 的 `inject` 数组全是必需依赖（`registry.d.ts` 的 `Inject` 只有数组/拦截配置两种形式，没有 optional 语义），任一服务在 DSH 新版本被改名或移除，插件整体加载失败，连回环网关和配对页都不启动。而 `WeixinBridge`、`WeixinNotifier` 本身已经能容忍 `controller` 缺失。
 - **方案**：`inject` 只保留 `webServer`、`connection`；`sessionController`、`workspaceRegistry`、`userQuestions` 用 `ctx.get()` 读取并在启动时做能力探测；`/status` 和后台概览输出能力矩阵（controller / workspace / userQuestions / weixin），缺失时微信桥接降级并显示原因；`scripts/integration-check.mjs` 增加“缺少可选服务”的 profile 变体。
+- **实施结果**：这条方案不成立——Cordis 的 `ctx.get()` 只解析调用方 fiber 在 `inject` 中声明的服务（`internal/service` store 通过注入时建立的 isolate 映射查找），因此 DSH 健康时 `sessionController`/`workspaceRegistry` 仍返回 false，造成能力矩阵误报。两者已恢复为必需依赖；`userQuestions` 仍作为可选能力探测，矩阵展示实际解析结果。
 - **改动面**：小-中（`src/index.ts`、`src/gateway.ts`、`web/src/admin.ts`、`scripts/integration-check.mjs`）。
 - **风险**：`ctx.get` 对未声明服务的可见性与时序需要验证（**需验证**）；静默降级会让人以为功能坏了，所以能力状态必须在后台显式可见。
 
@@ -149,7 +150,7 @@
 
 以下结论依赖 DSH 或 iLink 的外部行为，落地前应先用最小脚本验证，不要直接写进实现假设：
 
-- Cordis `ctx.get()` 对“未在 `inject` 中声明”的服务是否可见、何时可见。
+- ~~Cordis `ctx.get()` 对“未在 `inject` 中声明”的服务是否可见、何时可见。~~ **已确认**：不可见；`ctx.get()` 只能解析通过 `inject` 映射进调用方 fiber isolate 作用域的服务。
 - DSH HMR 重载时 `ctx.effect` 的异步 disposer 是否被等待，3081 端口是否立即释放。
 - iLink `getupdates` 的 `ret=-14` 是否只表示登录失效，是否存在可恢复的 token 过期错误码。
 - cloudflared 是否提供稳定的本地 metrics/connector 健康端点，可用来替代 Named Tunnel 的固定 sleep。
@@ -168,7 +169,7 @@
 - **P0-2** 微信通道状态机与 context_token 生命周期、发送失败分类
 - **P0-3** 配对码自动刷新、隧道 URL 变化横幅、Named Tunnel metrics `/ready` 健康检查
 - **P0-4** `auth.oauthAllowedUsers` 白名单、`secret-keys.json` 多密钥 + `/admin/key/rotate`、配对码日志脱敏、`/admin/audit` 导出
-- **P0-5** `inject` 只保留必需服务 + 能力矩阵
+- **P0-5** 能力矩阵（controller / workspace / userQuestions / weixin）+ `userQuestions` 可选探测；其余服务仍声明在 `inject`（见上方实施结果）
 - **P0-6** `npm run hmr-check` 冒烟脚本（无 dsh 时跳过）
 - **P0-7** 路由拆分到 `src/routes/*`、日志异步写入与大小轮转
 - **P1-1/P1-2**：消息去重与误回复拦截、GET 指数退避与 online/offline 状态、PWA 构建期 hash（`build.json`）、`sw.js` 自动缓存版本、app/shell 弱网提示

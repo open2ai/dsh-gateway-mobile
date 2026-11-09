@@ -41,7 +41,7 @@ WeChat handles an approval or question only while it has a valid inbound context
 - WeChat text/image chat bridged to a dedicated DSH session, owner-only by default
 - WeChat approvals, questions, plan review, and timed-question late answers
 - Cross-session completion notifications with merge/cooldown/rate limits
-- Admin console: overview (status chips + KPI/quick actions/7-day chart), pairing, WeChat, devices, logs, settings, help with diagnostics
+- Admin console: overview (status chips + KPI/quick actions/request trend chart with 7/14/30-day switch), pairing, WeChat, devices, logs, settings, help with diagnostics
 - `/health?deep=1` readiness, filtered audit export, key rotation, and a capability matrix
 - `npm run doctor` environment check and `npm run hmr-check` reload smoke test
 - Mobile opens the official DSH Web UI

@@ -138,9 +138,10 @@ Tunnel hostname churn); the admin console shows a persistent "re-pair" banner fo
 } }
 ```
 
-`GET /admin/audit?action=&since=&limit=` (loopback) — filtered audit trail. `action` is an
-exact event name, `since` accepts epoch milliseconds or an ISO timestamp, `limit` defaults
-to 100 (max 500):
+`GET /admin/audit?action=&since=&limit=` (loopback) — filtered audit trail. `action` is a
+case-insensitive prefix of the event name (`pairing` matches `pairing.issued` and
+`pairing.consumed`), `since` accepts epoch milliseconds or an ISO timestamp, `limit`
+defaults to 100 (max 500):
 
 ```json
 { "code": 0, "data": { "entries": [ { "timestamp": "…", "level": "audit", "message": "pairing.consumed" } ], "total": 1 } }

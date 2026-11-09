@@ -68,6 +68,8 @@ Out of scope: bypassing DSH approvals or sandboxes, exposing DSH's port directly
 
 **Approach**: Keep only `webServer` and `connection` in `inject`; read `sessionController`, `workspaceRegistry`, and `userQuestions` with `ctx.get()` and probe capabilities at startup. Expose a capability matrix (controller / workspace / userQuestions / weixin) in `/status` and the admin overview, degrading WeChat bridging with a visible reason. Add a "missing optional services" profile variant to `scripts/integration-check.mjs`.
 
+**Implemented outcome**: the probe cannot work that way — Cordis's `ctx.get()` only resolves services declared in `inject` for the calling fiber (the `internal/service` store is keyed through the isolate map created by injection), so `sessionController`/`workspaceRegistry` returned false while DSH was healthy. They are required again; `userQuestions` stays an optional probed capability and the matrix reports the resolved values.
+
 **Scope**: small-medium (`src/index.ts`, `src/gateway.ts`, `web/src/admin.ts`, `scripts/integration-check.mjs`).
 
 **Risk**: whether `ctx.get()` sees an undeclared service, and when, needs verification (**needs verification**). Silent degradation looks like breakage, so capability state must be explicit.
@@ -200,7 +202,7 @@ Out of scope: bypassing DSH approvals or sandboxes, exposing DSH's port directly
 
 These depend on external DSH or iLink behavior. Validate each with a minimal script before baking it into an implementation assumption:
 
-- Whether Cordis `ctx.get()` sees a service not declared in `inject`, and when.
+- ~~Whether Cordis `ctx.get()` sees a service not declared in `inject`, and when.~~ **Resolved**: it does not see sibling-provided services without an `inject` declaration; `ctx.get()` only resolves services mapped into the calling fiber's isolate scope.
 - Whether DSH HMR awaits `ctx.effect` async disposers and releases port 3081 immediately.
 - Whether iLink `getupdates` `ret=-14` only means "login invalid", or a recoverable token-expiry code exists.
 - Whether cloudflared exposes a stable local metrics/connector-health endpoint to replace the Named Tunnel fixed sleep.
@@ -219,7 +221,7 @@ The patch-level items and most of the "next version" items were implemented in o
 - **P0-2** WeChat channel state machine, context-token lifetime, classified send failures
 - **P0-3** automatic pairing-code refresh, tunnel URL-change banner, Named Tunnel metrics `/ready` health
 - **P0-4** `auth.oauthAllowedUsers`, `secret-keys.json` multi-key + `/admin/key/rotate`, pairing-code log redaction, `/admin/audit` export
-- **P0-5** `inject` limited to required services + capability matrix
+- **P0-5** capability matrix (controller / workspace / userQuestions / weixin) with `userQuestions` probed as optional; the other services stay declared in `inject` (see the P0-5 outcome above)
 - **P0-6** `npm run hmr-check` smoke script (skips without dsh)
 - **P0-7** route split into `src/routes/*`, asynchronous size-rotated logging
 - **P1-1/P1-2**: message dedupe and stray-reply interception, GET exponential backoff with online/offline state, build-time asset hashes (`build.json`), `sw.js` cache versioning, app/shell weak-network states

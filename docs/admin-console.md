@@ -11,12 +11,14 @@ phone PWA pages follow the browser language (zh/en).
 - **Overview**: a compact status strip with four chips (gateway, public tunnel, DSH upstream,
   WeChat bot) whose state comes from `/admin/health?deep=1`; a failing check surfaces as one
   alert row with a **查看诊断** shortcut, and missing DSH capabilities as a single warning
-  line (hidden when every capability is present). Below it, the KPI cards (available/online
-  devices, today's requests, gateway version), the quick actions (add device, manage WeChat)
-  and the 7-day request chart are shown directly — there is no collapsible "activity"
-  header. Both the chips and the chart refresh from `/admin/health?deep=1` plus
-  `/status` (which already carries `stats.summary(7)`). Logs are only rendered in the
-  **Logs** tab, so the overview does not duplicate them.
+  line (hidden when every capability is present). Below it come the KPI cards
+  (available/online devices, today's requests), then a two-column row with the **公网隧道**
+  panel (public URL with copy, connector health, uptime, start/stop/restart) and the quick
+  actions (add device, manage WeChat), and finally the request-traffic chart (7/14/30-day
+  switch, persisted locally) — there is no collapsible "activity" header. Both the chips and
+  the chart refresh from `/admin/health?deep=1` plus `/status` (which already carries
+  `stats.summary(7)`). Logs are only rendered in the **Logs** tab, so the overview does not
+  duplicate them. The plugin version lives in the **Help** tab, not on the overview.
 - **Pairing**: QR, 8-character code, expiry progress, copy link, regenerate. An expired
   code is refreshed automatically once while the page is visible, and a persistent banner
   appears when the tunnel hostname changed (`previousUrl`/`urlChangedAt`) so the phone can
@@ -44,11 +46,10 @@ phone PWA pages follow the browser language (zh/en).
   selects the log level, and sets the DSH proxy timeout; changes apply immediately, are
   persisted for the next start, and the panel states that clearly.
 - **Help**: FAQ for pairing failures, tunnel down, WeChat without a context, expired
-  pairing codes and key rotation, plus a collapsed **诊断** section with the full
-  `/health?deep=1` check list, the five-row capability matrix, and tunnel controls
-  (start/stop/restart, copy URL, health and uptime), the version/capability summary, and
-  links to `docs/DETAIL.zh.md`, `README.zh.md`, `admin-console.md` and `limitations.md`.
-  An abnormal overview chip jumps straight to this section.
+  pairing codes and key rotation, a collapsed **诊断** section with the full
+  `/health?deep=1` check list and the five-row capability matrix (refresh included), and
+  the version/capability summary. An abnormal overview chip jumps straight to this
+  section.
 
 Desktop uses a collapsible sidebar (state persisted in `localStorage`); mobile uses bottom
 navigation across the seven tabs. The sun/moon toggle switches dark/light theme; the choice

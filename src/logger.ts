@@ -36,7 +36,7 @@ export interface LoggerOptions {
 }
 
 export interface AuditQueryOptions {
-  /** Match the `action` field (or the entry message) exactly. */
+  /** Case-insensitive prefix of the `action` field (or the entry message). */
   action?: string | undefined
   /** Only entries at or after this instant; epoch ms, ISO string or Date. */
   since?: number | string | Date | undefined
@@ -201,7 +201,8 @@ export class Logger {
    * Flushes pending writes, reads `gateway.log` plus its `.1`..`.N` rotated
    * generations, ignores malformed JSONL lines, merges the on-disk entries with
    * the in-memory ring (deduped by timestamp+message+meta), then filters by
-   * `action` (message exact match), `since` and `limit`. Entries are returned in
+   * `action` (case-insensitive prefix of the message), `since` and `limit`. Entries are
+   * returned in ascending timestamp order; `total` is the match count before `limit`.
    * ascending timestamp order; `total` is the match count before `limit`.
    */
   async queryAudit(options: AuditQueryOptions = {}): Promise<AuditQueryResult> {
@@ -218,7 +219,8 @@ export class Logger {
 
     let result = [...merged.values()]
     if (options.action !== undefined && options.action !== '') {
-      result = result.filter((entry) => entry.message === options.action)
+      const prefix = options.action.trim().toLowerCase()
+      result = result.filter((entry) => entry.message.toLowerCase().startsWith(prefix))
     }
     const since = sinceMs(options.since)
     if (since !== undefined) {

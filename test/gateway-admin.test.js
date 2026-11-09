@@ -135,6 +135,12 @@ test('admin: audit export filters and never includes the full pairing code', asy
   assert.ok(auditData.entries.every((entry) => entry.message === 'admin.settings.updated'))
   assert.equal(typeof auditData.total, 'number')
 
+  // `action` is a case-insensitive prefix, so a short prefix matches the event family.
+  const prefix = await request(instance.gateway, '/mobile/api/v1/admin/audit?action=ADMIN.SETTINGS&limit=10')
+  const prefixData = (await prefix.json()).data
+  assert.ok(prefixData.total >= 1)
+  assert.ok(prefixData.entries.every((entry) => entry.message.startsWith('admin.settings')))
+
   const fullCode = instance.gateway.pairing.describe().code
   const everything = await request(instance.gateway, '/mobile/api/v1/admin/audit?limit=200')
   const text = JSON.stringify((await everything.json()).data)

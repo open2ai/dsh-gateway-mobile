@@ -39,7 +39,7 @@
     <aside class="app-sidebar">
       <div class="app-brand">
         <button class="brand-mark" id="brand-toggle" type="button" aria-label="收起侧栏" title="收起侧栏"><span class="app-logo">D</span></button>
-        <div class="app-brand-text"><strong>DSH Gateway</strong><small>Mobile access</small></div>
+        <div class="app-brand-text"><strong>DSH Gateway</strong></div>
         <button class="icon-button sidebar-collapse" id="sidebar-toggle" type="button" aria-label="收起侧栏" title="收起侧栏"><svg class="icon"><use href="#i-panel-left"/></svg></button>
       </div>
 
@@ -119,7 +119,28 @@
             <div class="kpi"><div class="kpi-top"><span class="kpi-label">可用设备</span><span class="kpi-icon"><svg class="icon"><use href="#i-phone"/></svg></span></div><strong class="kpi-value" id="metric-active">-</strong><span class="kpi-foot" id="metric-active-foot">已授权且未撤销</span></div>
             <div class="kpi"><div class="kpi-top"><span class="kpi-label">在线设备</span><span class="kpi-icon"><svg class="icon"><use href="#i-grid"/></svg></span></div><strong class="kpi-value" id="metric-online">-</strong><span class="kpi-foot">当前 WebSocket</span></div>
             <div class="kpi"><div class="kpi-top"><span class="kpi-label">今日请求</span><span class="kpi-icon"><svg class="icon"><use href="#i-list"/></svg></span></div><strong class="kpi-value" id="metric-today">-</strong><span class="kpi-foot">按天聚合</span></div>
-            <div class="kpi"><div class="kpi-top"><span class="kpi-label">网关版本</span><span class="kpi-icon"><svg class="icon"><use href="#i-refresh-cw"/></svg></span></div><strong class="kpi-value" id="metric-version">-</strong><span class="kpi-foot">dsh-gateway-mobile</span></div>
+          </div>
+
+          <div class="overview-duo">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title"><span class="eyebrow">TUNNEL</span><h2>公网隧道</h2><p class="panel-sub">公网地址、健康状态与启停控制</p></div>
+              <span class="status-pill" id="tunnel-chip"><span class="dot"></span><span id="tunnel-chip-text">-</span></span>
+            </div>
+            <div class="panel-body">
+              <dl class="data-list">
+                <div><dt>公网地址</dt><dd class="url-line"><span class="mono" id="tunnel-url">-</span><button class="copy-inline" id="copy-url" aria-label="复制公网地址"><svg class="icon"><use href="#i-copy"/></svg></button></dd></div>
+                <div><dt>协议</dt><dd id="tunnel-meta">-</dd></div>
+                <div><dt>健康检查</dt><dd id="tunnel-health">-</dd></div>
+                <div><dt>运行时长</dt><dd id="tunnel-uptime">-</dd></div>
+              </dl>
+              <div class="panel-actions">
+                <button class="button" id="tunnel-start"><svg class="icon"><use href="#i-play"/></svg>启动</button>
+                <button class="button primary" id="tunnel-restart"><svg class="icon"><use href="#i-refresh-cw"/></svg>重启</button>
+                <button class="button danger" id="tunnel-stop"><svg class="icon"><use href="#i-stop"/></svg>停止</button>
+              </div>
+              <p class="hint" id="tunnel-hint"></p>
+            </div>
           </div>
 
           <div class="panel quick-panel overview-quick">
@@ -138,11 +159,22 @@
               <div class="callout">管理页只在电脑本机可访问。公网隧道与微信 Bot 是两条独立通道；手机设备是否在线看「设备」页。Quick Tunnel 重启后域名会变化，手机需重新配对。</div>
             </div>
           </div>
+          </div>
 
           <div class="panel">
-            <div class="panel-head">
-              <div class="panel-title"><span class="eyebrow">TRAFFIC</span><h2>最近 7 天请求</h2><p class="panel-sub">按天统计 · 单位：次</p></div>
-              <span class="badge" id="chart-total">-</span>
+            <div class="panel-head chart-head">
+              <div class="panel-title"><span class="eyebrow">TRAFFIC</span><h2>请求趋势</h2><p class="panel-sub" id="chart-sub">最近 7 天 · 按天统计 · 单位：次</p></div>
+              <div class="chart-head-actions">
+                <span class="badge" id="chart-total">-</span>
+                <label class="chart-range-field">
+                  <span class="chart-range-label">范围</span>
+                  <select class="chart-range" id="chart-range" aria-label="图表统计范围">
+                    <option value="7" selected>7 天</option>
+                    <option value="14">14 天</option>
+                    <option value="30">30 天</option>
+                  </select>
+                </label>
+              </div>
             </div>
             <div class="panel-body">
               <div class="chart-meta">
@@ -153,6 +185,7 @@
                 <div class="chart-y" id="chart-y" aria-hidden="true"></div>
                 <div class="chart-wrap">
                   <div class="spark" id="spark" aria-label="近 7 天请求趋势"></div>
+                  <div class="chart-points" id="chart-points" aria-hidden="true"></div>
                   <div class="chart-tip" id="chart-tip" hidden></div>
                 </div>
               </div>
@@ -239,7 +272,7 @@
             <div class="panel-body">
               <div class="audit-toolbar" role="group" aria-label="审计导出">
                 <label class="audit-field audit-field-action">
-                  <span class="audit-label">审计 action</span>
+                  <span class="audit-label">审计 action 前缀</span>
                   <input class="audit-input" id="audit-action" type="text" placeholder="如 pairing / weixin" autocomplete="off" spellcheck="false">
                 </label>
                 <label class="audit-field audit-field-range">
@@ -605,7 +638,7 @@
             <summary>
               <span class="eyebrow">DIAGNOSTICS</span>
               <span class="diagnostics-title">诊断</span>
-              <span class="diagnostics-hint">深度健康检查 / 能力矩阵 / 隧道操作</span>
+              <span class="diagnostics-hint">深度健康检查 / 能力矩阵</span>
             </summary>
             <div class="diagnostics-body">
               <div class="dashboard-grid">
@@ -632,26 +665,6 @@
                   </div>
                 </div>
               </div>
-              <div class="panel">
-                <div class="panel-head">
-                  <div class="panel-title"><span class="eyebrow">TUNNEL</span><h2>隧道操作</h2><p class="panel-sub">公网地址与启停控制</p></div>
-                  <span class="status-pill" id="tunnel-chip"><span class="dot"></span><span id="tunnel-chip-text">-</span></span>
-                </div>
-                <div class="panel-body">
-                  <dl class="data-list">
-                    <div><dt>公网地址</dt><dd class="url-line"><span class="mono" id="tunnel-url">-</span><button class="copy-inline" id="copy-url" aria-label="复制公网地址"><svg class="icon"><use href="#i-copy"/></svg></button></dd></div>
-                    <div><dt>协议</dt><dd id="tunnel-meta">-</dd></div>
-                    <div><dt>健康检查</dt><dd id="tunnel-health">-</dd></div>
-                    <div><dt>运行时长</dt><dd id="tunnel-uptime">-</dd></div>
-                  </dl>
-                  <div class="panel-actions">
-                    <button class="button" id="tunnel-start"><svg class="icon"><use href="#i-play"/></svg>启动</button>
-                    <button class="button primary" id="tunnel-restart"><svg class="icon"><use href="#i-refresh-cw"/></svg>重启</button>
-                    <button class="button danger" id="tunnel-stop"><svg class="icon"><use href="#i-stop"/></svg>停止</button>
-                  </div>
-                  <p class="hint" id="tunnel-hint"></p>
-                </div>
-              </div>
             </div>
           </details>
 
@@ -670,22 +683,6 @@
                   <div><dt>管理后台</dt><dd class="mono">/mobile/admin</dd></div>
                 </dl>
                 <p class="hint">管理后台只在本机回环地址可用；插件版本保持 0.1.4。</p>
-              </div>
-            </div>
-
-            <div class="panel">
-              <div class="panel-head">
-                <div class="panel-title"><span class="eyebrow">DOCS</span><h2>文档入口</h2></div>
-              </div>
-              <div class="panel-body">
-                <ul class="doc-list">
-                  <li><code>docs/DETAIL.zh.md</code><span>中文完整说明：能力、配置、安全模型与限制（随 npm 包发布）</span></li>
-                  <li><code>docs/DETAIL.md</code><span>English full documentation</span></li>
-                  <li><code>README.zh.md</code><span>快速开始与安装</span></li>
-                  <li><code>docs/admin-console.md</code><span>管理后台页面说明（插件仓库）</span></li>
-                  <li><code>docs/limitations.md</code><span>已知限制与实现差异（插件仓库）</span></li>
-                </ul>
-                <p class="hint">文档随插件或仓库的 <code>docs/</code> 目录提供，本页不内嵌文档渲染。</p>
               </div>
             </div>
           </div>

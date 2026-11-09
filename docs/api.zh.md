@@ -137,7 +137,8 @@
 } }
 ```
 
-`GET /admin/audit?action=&since=&limit=`（仅回环）— 过滤后的审计记录。`action` 为精确事件名，
+`GET /admin/audit?action=&since=&limit=`（仅回环）— 过滤后的审计记录。`action` 为事件名的
+大小写不敏感前缀（如 `pairing` 会匹配 `pairing.issued` 和 `pairing.consumed`），
 `since` 接受 epoch 毫秒或 ISO 时间戳，`limit` 默认为 100（最大 500）：
 
 ```json
