@@ -1,99 +1,101 @@
-# dsh-gateway-mobile 架构与流程图
+# dsh-gateway-mobile Architecture & Flow Diagrams
 
-> 对应版本：插件 `0.1.1`，验证环境 DSH `0.2.1-rc.4`。  
-> 本文描述当前实现，不包含未实现的计划项。
+[English](./architecture-flow.md) | [中文](./architecture-flow.zh.md)
 
-## 1. 系统上下文
+> Plugin version: `0.1.4`; verified against DSH `0.2.2-rc.1`.  
+> This document describes the current implementation and does not include unimplemented plans.
 
-纯文本拓扑：
+## 1. System context
+
+Plain-text topology:
 
 ```text
-手机浏览器 ──HTTPS──► Cloudflare Edge ──出站隧道──► Gateway 127.0.0.1:3081
-                                                        │
-微信用户 ──► 微信 iLink ◄──长轮询 / sendmessage──────────┤
-                                                        │ HTTP / WebSocket 反向代理
-                                                        ▼
-                                                  DSH Web 127.0.0.1:3080
-                                                        │
-                                                        ▼
-                                              本地 DSH 会话 / 工具 / 审批 / 提问
+Phone browser --HTTPS--> Cloudflare Edge --outbound tunnel--> Gateway 127.0.0.1:3081
+                                                                                      |
+WeChat user --> WeChat iLink <--long poll / sendmessage-------------------------------+
+                                                                                      | HTTP / WebSocket reverse proxy
+                                                                                      v
+                                                                           DSH Web 127.0.0.1:3080
+                                                                                      |
+                                                                                      v
+                                                              local DSH session / tools / approvals / questions
 ```
 
 ```mermaid
 flowchart LR
-  subgraph Public["公网侧"]
-    Phone["手机浏览器<br/>配对码 / DSH Web UI"]
-    WeChatUser["微信用户"]
+  subgraph Public["Public side"]
+    Phone["Phone browser<br/>pairing code / DSH Web UI"]
+    WeChatUser["WeChat user"]
   end
 
   subgraph CF["Cloudflare"]
     Edge["Cloudflare Edge<br/>Quick Tunnel"]
   end
 
-  subgraph ILink["微信 iLink"]
-    WX["ClawBot / iLink 服务"]
+  subgraph ILink["WeChat iLink"]
+    WX["ClawBot / iLink service"]
   end
 
-  subgraph Host["本机 DSH Host"]
+  subgraph Host["Local DSH Host"]
     GW["dsh-gateway-mobile<br/>127.0.0.1:3081"]
     DSH["dsh web<br/>127.0.0.1:3080"]
-    FS["本地数据目录<br/>$DSH_HOME/gateway-mobile"]
+    FS["local data directory<br/>$DSH_HOME/gateway-mobile"]
   end
 
   Phone -->|HTTPS| Edge
-  Edge -->|出站隧道| GW
-  WeChatUser -->|微信消息| WX
-  GW <-->|长轮询 / sendmessage| WX
-  GW <-->|HTTP / WebSocket 反向代理| DSH
-  GW <-->|JSON / 加密凭证| FS
-  DSH <-->|会话 / 审批 / 提问| GW
+  Edge -->|outbound tunnel| GW
+  WeChatUser -->|WeChat message| WX
+  GW <-->|long poll / sendmessage| WX
+  GW <-->|HTTP / WebSocket reverse proxy| DSH
+  GW <-->|JSON / encrypted credentials| FS
+  DSH <-->|session / approval / question| GW
 ```
 
-关键边界：
+Key boundaries:
 
-- DSH 只监听回环地址，不直接暴露公网。
-- 公网入口只有 Cloudflare Quick Tunnel，终止在插件的 `127.0.0.1:3081`。
-- 微信不经过 Cloudflare；插件通过 iLink 主动长轮询和发送消息。
-- 管理后台只在电脑本机回环可访问。
+- DSH listens only on the loopback address and is never exposed to the public internet directly.
+- The only public entry point is the Cloudflare Quick Tunnel, terminating at the plugin's `127.0.0.1:3081`.
+- WeChat does not go through Cloudflare; the plugin actively long-polls and sends messages through iLink.
+- The admin console is reachable only from the local machine's loopback interface.
 
-## 2. 组件与模块
+## 2. Components and modules
 
 ```mermaid
 flowchart TB
-  subgraph Entry["Cordis 入口"]
-    Index["src/index.ts<br/>注入 DSH 服务 / 组装"]
-    Config["src/config.ts<br/>默认值 / 校验"]
+  subgraph Entry["Cordis entry"]
+    Index["src/index.ts<br/>inject DSH services / wiring"]
+    Config["src/config.ts<br/>defaults / validation"]
   end
 
-  subgraph Gateway["网关"]
-    GatewaySvc["src/gateway.ts<br/>HTTP 路由 / 管理 API / 反向代理"]
-    Tunnel["src/tunnel.ts<br/>cloudflared 生命周期"]
-    Cloudflared["src/cloudflared.ts<br/>二进制解析 / 下载"]
-    Proxy["src/proxy.ts<br/>DSH Cookie / HTTP+WS 转发"]
-    WS["src/ws.ts<br/>/mobile/ws 控制通道"]
+  subgraph Gateway["Gateway"]
+    GatewaySvc["src/gateway.ts<br/>HTTP routes / admin API / reverse proxy"]
+    Tunnel["src/tunnel.ts<br/>cloudflared lifecycle"]
+    Cloudflared["src/cloudflared.ts<br/>binary resolution / download"]
+    Proxy["src/proxy.ts<br/>DSH Cookie / HTTP+WS forwarding"]
+    WS["src/ws.ts<br/>/mobile/ws control channel"]
     OAuth["src/oauth.ts<br/>GitHub / Gitee"]
-    Pairing["src/pairing.ts<br/>一次性配对码"]
-    Sessions["src/sessions.ts<br/>HMAC 设备会话"]
-    Devices["src/devices.ts<br/>设备注册 / 撤销 / 过期"]
-    Settings["src/settings.ts<br/>管理端设置持久化"]
-    Stats["src/stats.ts<br/>请求统计"]
+    Pairing["src/pairing.ts<br/>one-time pairing codes"]
+    Sessions["src/sessions.ts<br/>HMAC device sessions"]
+    Devices["src/devices.ts<br/>device registration / revoke / expiry"]
+    Settings["src/settings.ts<br/>admin settings persistence"]
+    Stats["src/stats.ts<br/>request statistics"]
   end
 
-  subgraph Weixin["微信"]
-    Channel["src/weixin.ts<br/>iLink 协议 / 登录 / 长轮询"]
-    Bridge["src/weixin-bridge.ts<br/>专用 DSH 会话 / 审批 / 提问"]
-    Notifier["src/weixin-notifier.ts<br/>跨会话完成通知"]
+  subgraph Weixin["WeChat"]
+    Channel["src/weixin.ts<br/>iLink protocol / login / long poll"]
+    Bridge["src/weixin-bridge.ts<br/>dedicated DSH session / approvals / questions"]
+    Notifier["src/weixin-notifier.ts<br/>cross-session completion notices"]
   end
 
-  subgraph Admin["管理后台"]
+  subgraph Admin["Admin console"]
     AdminHTML["web/admin.html"]
     AdminTS["web/src/admin.ts"]
     AdminCSS["web/assets/admin.css"]
   end
 
-  subgraph Shared["共享基础设施"]
-    Store["src/store.ts<br/>原子 JSON / AES-GCM"]
-    Logger["src/logger.ts<br/>日志 / 审计"]
+  subgraph Shared["Shared infrastructure"]
+    Store["src/store.ts<br/>atomic JSON / AES-GCM"]
+    Logger["src/logger.ts<br/>logs / audit"]
     Errors["src/errors.ts"]
     Util["src/util.ts"]
     RateLimit["src/ratelimit.ts"]
@@ -127,24 +129,24 @@ flowchart TB
   GatewaySvc --> Util
 ```
 
-### 模块职责
+### Module responsibilities
 
-| 模块 | 职责 |
+| Module | Responsibility |
 |---|---|
-| `src/index.ts` | 读取配置、注入 `webServer` / `connection` / `sessionController` / `workspaceRegistry` / `userQuestions`，启动网关、隧道、微信通道、桥接和通知器 |
-| `src/gateway.ts` | 回环 HTTP 服务、移动端页面、配对/设备/管理 API、反向代理、管理后台静态资源 |
-| `src/tunnel.ts` | Quick Tunnel 启动、URL 解析、重连退避、状态上报 |
-| `src/cloudflared.ts` | cloudflared 路径解析、缓存与自动下载 |
-| `src/proxy.ts` | 获取并缓存 DSH Cookie、HTTP/WS 反向代理、头部重写 |
-| `src/pairing.ts` | 一次性 8 位配对码、有效期、失败锁定 |
-| `src/sessions.ts` | HMAC 设备 Cookie、过期与续期 |
-| `src/devices.ts` | 设备注册、撤销、清理、在线 WebSocket 跟踪 |
-| `src/weixin.ts` | 扫码登录、凭证加密保存、`getupdates` 长轮询、文本/图片下载、`sendmessage` |
-| `src/weixin-bridge.ts` | 微信专用 DSH 会话、文本/图片提问、审批与用户问答、workspace 绑定、迟到回答 |
-| `src/weixin-notifier.ts` | 监听顶层会话完成、5 秒合并、冷却、每小时限额、待发 outbox |
-| `web/admin.*` | 本机管理后台：概览、配对、微信、设备、日志、设置 |
+| `src/index.ts` | Reads config, injects `webServer` / `connection` / `sessionController` / `workspaceRegistry` / `userQuestions`, and starts the gateway, tunnel, WeChat channel, bridge and notifier |
+| `src/gateway.ts` | Loopback HTTP server, mobile pages, pairing/device/admin APIs, reverse proxy and admin-console static assets |
+| `src/tunnel.ts` | Quick Tunnel startup, URL parsing, reconnect backoff and status reporting |
+| `src/cloudflared.ts` | cloudflared path resolution, caching and auto-download |
+| `src/proxy.ts` | Obtains and caches the DSH Cookie, HTTP/WS reverse proxy, header rewriting |
+| `src/pairing.ts` | One-time 8-character pairing codes, TTL and failure lockout |
+| `src/sessions.ts` | HMAC device Cookie, expiry and renewal |
+| `src/devices.ts` | Device registration, revoke, cleanup and online WebSocket tracking |
+| `src/weixin.ts` | QR login, encrypted credential storage, `getupdates` long polling, text/image download and `sendmessage` |
+| `src/weixin-bridge.ts` | Dedicated WeChat DSH session, text/image questions, approvals and user Q&A, workspace binding and late answers |
+| `src/weixin-notifier.ts` | Watches top-level session completion, 5-second merge, cooldown, hourly cap and pending outbox |
+| `web/admin.*` | Local admin console: overview, pairing, WeChat, devices, logs and settings |
 
-## 3. 启动流程
+## 3. Startup flow
 
 ```mermaid
 sequenceDiagram
@@ -156,287 +158,287 @@ sequenceDiagram
   participant B as WeixinBridge
   participant N as WeixinNotifier
 
-  L->>I: 加载 gateway-mobile 插件
-  I->>I: normalizeConfig + 初始化数据目录 / secret / logger / devices / settings
-  I->>G: 创建并监听 127.0.0.1:3081
-  I->>T: 后台启动 Quick Tunnel
-  I->>W: 恢复微信凭证（如有）
-  I->>B: 启动桥接
-  I->>N: 启动完成通知器
-  T-->>G: 隧道 URL / 连接状态
-  W-->>G: 微信连接 / 登录状态
-  Note over G: 管理后台在回环地址可用
+  L->>I: load the gateway-mobile plugin
+  I->>I: normalizeConfig + init data directory / secret / logger / devices / settings
+  I->>G: create and listen on 127.0.0.1:3081
+  I->>T: start Quick Tunnel in the background
+  I->>W: restore WeChat credentials (if any)
+  I->>B: start the bridge
+  I->>N: start the completion notifier
+  T-->>G: tunnel URL / connection status
+  W-->>G: WeChat connection / login status
+  Note over G: admin console available on loopback
 ```
 
-处理顺序：
+Processing order:
 
-1. Cordis 加载插件，校验配置并初始化持久化。
-2. 创建回环网关并开始监听。
-3. 后台启动 Cloudflare Quick Tunnel。
-4. 若存在 `weixin-bot.json`，恢复微信连接并开始长轮询。
-5. 启动 `WeixinBridge` 和 `WeixinNotifier`。
-6. 插件 dispose 时依次关闭网关、隧道、轮询、桥接、通知器并清理定时器。
+1. Cordis loads the plugin, validates config and initializes persistence.
+2. Create the loopback gateway and start listening.
+3. Start the Cloudflare Quick Tunnel in the background.
+4. If `weixin-bot.json` exists, restore the WeChat connection and begin long polling.
+5. Start `WeixinBridge` and `WeixinNotifier`.
+6. On plugin dispose, close the gateway, tunnel, polling, bridge and notifier in order, and clear timers.
 
-## 4. 手机配对与访问流程
+## 4. Phone pairing and access flow
 
 ```mermaid
 sequenceDiagram
-  participant P as 手机浏览器
+  participant P as Phone browser
   participant E as Cloudflare Edge
   participant G as Gateway 3081
   participant D as DSH Web 3080
 
   P->>E: HTTPS /mobile/pair
-  E->>G: 隧道转发
-  G-->>P: 配对页
-  P->>G: 提交 8 位配对码
-  G->>G: 校验 / 限流 / 锁定检查
-  G->>G: 创建设备 + HMAC 会话
+  E->>G: tunnel forward
+  G-->>P: pairing page
+  P->>G: submit the 8-character pairing code
+  G->>G: validation / rate limit / lockout check
+  G->>G: create device + HMAC session
   G-->>P: Set-Cookie dsh_session
   P->>E: /mobile/... + Cookie
-  E->>G: 隧道转发
-  G->>G: Host / Origin / 设备 / 过期校验
-  G->>D: 注入 DSH Cookie 后反向代理
-  D-->>G: HTTP 或 WebSocket 流
-  G-->>P: 响应
+  E->>G: tunnel forward
+  G->>G: Host / Origin / device / expiry validation
+  G->>D: inject DSH Cookie, then reverse proxy
+  D-->>G: HTTP or WebSocket stream
+  G-->>P: response
 ```
 
-要点：
+Key points:
 
-- 网关自己签发设备会话，手机永远拿不到 DSH 的 Cookie。
-- DSH Cookie 由 `ctx.connection.authenticatedUrl()` 换取，只保存在插件内存。
-- 每次请求校验 Host/Origin，避免隧道域名变化或跨站请求。
-- 管理后台额外限制为“回环且非隧道代理”。
+- The gateway issues its own device sessions; the phone never receives DSH's Cookie.
+- The DSH Cookie is obtained via `ctx.connection.authenticatedUrl()` and kept only in plugin memory.
+- Every request validates Host/Origin to cope with tunnel hostname changes and cross-site requests.
+- The admin console is additionally restricted to "loopback and not via the tunnel proxy".
 
-## 5. 微信登录与对话流程
+## 5. WeChat login and conversation flow
 
 ```mermaid
 sequenceDiagram
-  participant U as 微信用户
-  participant WX as iLink 服务
+  participant U as WeChat user
+  participant WX as iLink service
   participant C as WeixinChannel
-  participant A as 本机管理后台
+  participant A as local admin console
   participant B as WeixinBridge
-  participant D as 专用 DSH 会话
+  participant D as dedicated DSH session
 
-  U->>WX: 扫描二维码
-  WX-->>C: 扫码状态
-  C-->>A: pending + 脱敏账号
-  A->>C: 允许连接
-  C->>C: 加密保存 Bot 凭证
-  C->>WX: getupdates 长轮询
-  U->>WX: 发送文本 / 图片
-  WX-->>C: 入站消息 + context_token
+  U->>WX: scan the QR code
+  WX-->>C: scan status
+  C-->>A: pending + masked account
+  A->>C: allow connection
+  C->>C: save Bot credentials encrypted
+  C->>WX: getupdates long poll
+  U->>WX: send text / image
+  WX-->>C: inbound message + context_token
   C->>B: onMessage
-  B->>D: prompt（文本 / 图片）
+  B->>D: prompt (text / image)
   D-->>B: assistant/message + turn/end
   B->>C: sendText
   C->>WX: sendmessage
-  WX-->>U: 微信回复
+  WX-->>U: WeChat reply
 ```
 
-要点：
+Key points:
 
-- 扫码后必须由电脑本机管理后台确认，未确认不会保存凭证。
-- 完整微信用户 ID 不持久化、不写日志；仅内存中使用，必要时脱敏显示。
-- 专用 DSH 会话优先取当前 workspace；没有则按最近更新的 workspace 绑定。
-- 微信入站消息提供 `context_token`，这是后续审批/提问/通知能发回微信的前提。
+- After scanning, the local admin console on the computer must confirm; credentials are not saved without confirmation.
+- The full WeChat user ID is never persisted and never written to logs; it is used only in memory and masked when displayed.
+- The dedicated DSH session prefers the current workspace; if there is none, it binds to the most recently updated workspace.
+- Inbound WeChat messages provide a `context_token`, which is the prerequisite for later approvals, questions and notifications to be sent back to WeChat.
 
-## 6. 审批流程
+## 6. Approval flow
 
-审批事件：`approval/request`。
+Approval event: `approval/request`.
 
 ```mermaid
 sequenceDiagram
   participant D as DSH Agent
-  participant E as 事件总线
+  participant E as event bus
   participant B as WeixinBridge
-  participant WX as 微信
-  participant WEB as DSH 网页
+  participant WX as WeChat
+  participant WEB as DSH web page
 
   D->>E: approval/request
-  E->>B: waterfall（prepend 优先）
-  alt 微信有 context_token 且没有其他待处理交互
-    B->>WX: 审批卡（回复 Y / N）
-    WX-->>B: Y 或 N
+  E->>B: waterfall (prepend priority)
+  alt WeChat has a context_token and no other pending interaction
+    B->>WX: approval card (reply Y / N)
+    WX-->>B: Y or N
     B-->>E: allowed-once / rejected
-  else 无 context / 已有待处理 / 超出额度
+  else no context / already pending / quota exceeded
     B-->>E: next()
-    E->>WEB: 由网页审批卡处理
+    E->>WEB: handled by the web approval card
   end
 ```
 
-行为：
+Behavior:
 
-- 微信审批提示不要求输入随机编号；内部仍生成审批 ID，用于审计和历史。
-- 回复支持 `Y` / `N`、`允许` / `拒绝`、`yes` / `no`。
-- 微信和网页是单通道接管：微信有上下文时由微信处理，网页不重复弹窗；没有上下文时回退网页。
-- 审批历史记录会话、工具、原因、状态，不记录微信用户 ID。
-- 超时 120 秒自动拒绝。
+- The WeChat approval prompt does not require typing a random ID; an approval ID is still generated internally for audit and history.
+- Replies support `Y` / `N`, `允许` / `拒绝`, and `yes` / `no`.
+- WeChat and the web page take over through a single channel: when WeChat has a context, WeChat handles it and the web page does not show a duplicate prompt; without a context, it falls back to the web page.
+- Approval history records the session, tool, reason and status, but not the WeChat user ID.
+- A 120-second timeout automatically rejects.
 
-## 7. 用户问答流程
+## 7. User question flow
 
-问答事件：`user-questions/request`。
+Question event: `user-questions/request`.
 
 ```mermaid
 sequenceDiagram
   participant D as DSH Agent
-  participant E as 事件总线
+  participant E as event bus
   participant B as WeixinBridge
-  participant WX as 微信
-  participant WEB as DSH 网页
+  participant WX as WeChat
+  participant WEB as DSH web page
 
   D->>E: user-questions/request
-  E->>B: waterfall（prepend 优先）
-  alt 微信有 context_token
-    B->>WX: 问题卡（问题 / 选项 / 多选提示）
-    WX-->>B: 序号 / 选项文字 / 自定义文字 / 跳过
+  E->>B: waterfall (prepend priority)
+  alt WeChat has a context_token
+    B->>WX: question card (question / options / multi-select hint)
+    WX-->>B: option number / option text / custom text / skip
     B-->>E: answers[]
-  else 无 context / 已有待处理 / 发送失败
+  else no context / already pending / send failed
     B-->>E: next()
-    E->>WEB: 网页问答卡
+    E->>WEB: web question card
   end
 ```
 
-支持形态：
+Supported forms:
 
-- 单问题、多问题批次；
-- 单选、多选；
-- 选项序号、选项文字、自定义文字；
-- `跳过`；
-- `plan-review` 作为带选项的用户问题转发。
+- single question, multi-question batches;
+- single-select, multi-select;
+- option numbers, option text, custom text;
+- `跳过` (skip);
+- `plan-review` forwarded as a user question with options.
 
-多问题按顺序逐个提问，回答完成后合并为完整 `answers` 再回传。
+Multi-question batches ask one question at a time, then merge the answers into a complete `answers` array and send it back.
 
-### timed 提问的迟到回答
+### Late answers for timed questions
 
 ```mermaid
 sequenceDiagram
   participant D as DSH Agent
   participant Q as userQuestions
   participant B as WeixinBridge
-  participant WX as 微信
+  participant WX as WeChat
 
   D->>Q: askTimed(timeout)
-  Q->>B: user-questions/request（timed）
-  B->>WX: 问题卡
-  Q-->>B: 前台等待超时（signal abort）
-  B->>B: 保留 pending + late 状态
-  Note over D: agent 继续执行
-  WX-->>B: 稍后回复
+  Q->>B: user-questions/request (timed)
+  B->>WX: question card
+  Q-->>B: foreground wait times out (signal abort)
+  B->>B: keep pending + late state
+  Note over D: the agent keeps running
+  WX-->>B: reply arrives later
   B->>Q: userQuestions.answer(agent, callId, answer)
   Q-->>D: user-question-reply
 ```
 
-限制：
+Limitations:
 
-- 只对仍存活的 root agent 有效；
-- 会话关闭或 DSH 重启后不能补答；
-- 迟到回答窗口保留 30 分钟；
-- 默认 `legacy` 问答模式不受影响。
+- only works for a root agent that is still alive;
+- cannot be answered after the session closes or DSH restarts;
+- the late-answer window is kept for 30 minutes;
+- the default `legacy` question mode is unaffected.
 
-## 8. 跨会话完成通知流程
+## 8. Cross-session completion notification flow
 
 ```mermaid
 sequenceDiagram
   participant C as sessionController
   participant N as WeixinNotifier
-  participant WX as 微信
-  participant S as 待发 outbox
+  participant WX as WeChat
+  participant S as pending outbox
 
-  loop 每 5 秒
+  loop every 5 seconds
     N->>C: list()
-    C-->>N: 会话列表
-    N->>N: 只监听运行中或最近 60 秒更新的会话
-    N->>N: 最多 20 个 watcher
+    C-->>N: session list
+    N->>N: watch only running sessions or sessions updated in the last 60 seconds
+    N->>N: at most 20 watchers
   end
-  C-->>N: turn/end + 最终文本
-  N->>N: 5 秒合并 / 单会话冷却 / 全局间隔 / 每小时上限
-  N->>S: 无 context_token 时持久化待发
-  N->>WX: sendText（有 context 时发送）
+  C-->>N: turn/end + final text
+  N->>N: 5-second merge / per-session cooldown / global interval / hourly cap
+  N->>S: persist pending when there is no context_token
+  N->>WX: sendText (send when a context exists)
 ```
 
-默认策略：
+Default policy:
 
 ```text
-合并窗口：5 秒
-单会话冷却：60 秒
-全局间隔：15 秒
-每小时上限：30 条
+Merge window: 5 seconds
+Per-session cooldown: 60 seconds
+Global interval: 15 seconds
+Hourly cap: 30 messages
 ```
 
-特点：
+Characteristics:
 
-- 监听所有 workspace 的顶层 DSH 会话；
-- 跳过子会话、subagent、微信专用会话；
-- 不监听所有历史冷会话，避免内存增长；
-- 推送节奏可在管理后台调整，保存后立即生效；
-- 完成通知和审批通知使用独立额度，互不占用。
+- watches top-level DSH sessions across all workspaces;
+- skips child sessions, subagents and the dedicated WeChat session;
+- does not watch every historical cold session, avoiding memory growth;
+- the push pacing can be tuned in the admin console and takes effect immediately after saving;
+- completion notices and approval notices use independent quotas and do not consume each other's.
 
-## 9. 管理后台流程
+## 9. Admin console flow
 
 ```mermaid
 flowchart LR
-  Admin["本机浏览器<br/>127.0.0.1:3081/mobile/admin"] --> Gateway["Gateway"]
-  Gateway -->|静态资源| Web["web/admin.html + admin.ts + admin.css"]
-  Gateway -->|GET/POST 管理 API| Services["配对 / 设备 / 隧道 / 微信 / 日志 / 设置"]
+  Admin["local browser<br/>127.0.0.1:3081/mobile/admin"] --> Gateway["Gateway"]
+  Gateway -->|static assets| Web["web/admin.html + admin.ts + admin.css"]
+  Gateway -->|GET/POST admin API| Services["pairing / devices / tunnel / WeChat / logs / settings"]
   Services --> Store["$DSH_HOME/gateway-mobile"]
-  Gateway -->|回环 + 非代理| Admin
+  Gateway -->|loopback + non-proxied| Admin
 ```
 
-页面分区：
+Page sections:
 
-- 概览：设备、请求、隧道、微信状态；
-- 配对：配对码、二维码、有效期；
-- 微信：扫码、连接状态、换绑/断开、最近推送、审批记录；
-- 设备：重命名、撤销、清理；
-- 日志：运行日志与审计；
-- 设置：配对/会话时长、微信连接与推送节奏。
+- Overview: device, request, tunnel and WeChat status;
+- Pairing: pairing code, QR code and validity;
+- WeChat: QR scan, connection status, rebind/disconnect, recent pushes and approval history;
+- Devices: rename, revoke, cleanup;
+- Logs: runtime logs and audit;
+- Settings: pairing/session lifetimes, WeChat connection and push pacing.
 
-## 10. 数据与状态文件
+## 10. Data and state files
 
 ```text
 $DSH_HOME/gateway-mobile/
-├── secret.key                     # HMAC / AES 密钥
-├── devices.json                   # 设备注册表
-├── admin-settings.json            # 管理后台设置
-├── stats.json                     # 请求统计
-├── gateway.log                    # 结构化日志 / 审计 JSONL
-├── weixin-bot.json                # 加密微信 Bot 凭证
-├── weixin-session.json            # 微信专用 DSH 会话 ID
-├── weixin-notify-state.json       # 推送开关 / 节奏 / 历史
-├── weixin-notify-pending.json     # 无 context 时的待发队列
-├── weixin-approval-history.json   # 最近审批记录
-└── cloudflared/                   # 自动下载的 cloudflared
+├── secret.key                     # HMAC / AES key
+├── devices.json                   # device registry
+├── admin-settings.json            # admin console settings
+├── stats.json                     # request statistics
+├── gateway.log                    # structured logs / audit JSONL
+├── weixin-bot.json                # encrypted WeChat Bot credentials
+├── weixin-session.json            # dedicated WeChat DSH session id
+├── weixin-notify-state.json       # notification toggle / pacing / history
+├── weixin-notify-pending.json     # pending outbox when there is no context
+├── weixin-approval-history.json   # recent approval records
+└── cloudflared/                   # auto-downloaded cloudflared
 ```
 
-注意：
+Notes:
 
-- 完整微信用户 ID 不写入上述文件；
-- Bot token 使用 AES-GCM 加密保存；
-- 待发队列和历史都有上限，避免长期运行无限增长。
+- The full WeChat user ID is not written to any of the files above;
+- The Bot token is stored encrypted with AES-GCM;
+- Both the outbox and the history are bounded to avoid unbounded growth in long-running use.
 
-## 11. 安全与失败边界
+## 11. Security and failure boundaries
 
-| 边界 / 失败 | 行为 |
+| Boundary / failure | Behavior |
 |---|---|
-| 手机请求 Host 不是当前隧道域名 | 403 |
-| Origin 与 Host 不一致 | 拒绝 |
-| 未配对 / 会话过期 / 设备撤销 | 拒绝，要求重新配对 |
-| 管理接口来自隧道 | 拒绝，只允许本机回环 |
-| 隧道断开 | 网关继续在本机运行；隧道进入重连/错误状态 |
-| DSH 暂不可用 | 代理返回 5xx；配对和设备会话不受影响 |
-| DSH Cookie 失效 | 首次 GET/HEAD 401 时重新换取并重试一次 |
-| 微信没有 context_token | 审批/提问回退网页；完成通知写入待发队列 |
-| 微信审批/提问已有 pending | 新交互回退网页，避免并发混乱 |
-| timed 提问超时 | 保留迟到回答窗口，之后通过 `userQuestions.answer` 补答 |
-| 微信凭证失效 | 停止轮询；需要重新扫码并由本机确认 |
+| Phone request Host is not the current tunnel domain | 403 |
+| Origin does not match Host | Rejected |
+| Not paired / session expired / device revoked | Rejected; re-pairing required |
+| Admin API request comes from the tunnel | Rejected; only local loopback allowed |
+| Tunnel disconnected | The gateway keeps running locally; the tunnel enters reconnecting/error state |
+| DSH temporarily unavailable | The proxy returns 5xx; pairing and device sessions are unaffected |
+| DSH Cookie invalid | Re-exchange and retry once on the first GET/HEAD 401 |
+| WeChat has no context_token | Approvals/questions fall back to the web page; completion notices go to the outbox |
+| WeChat approval/question already pending | New interactions fall back to the web page to avoid concurrency confusion |
+| timed question timeout | Keep the late-answer window, then answer via `userQuestions.answer` |
+| WeChat credentials invalid | Stop polling; re-scan the QR code and confirm locally |
 
-## 12. 关键设计取舍
+## 12. Key design trade-offs
 
-1. **DSH 不暴露公网**：公网只到网关，DSH 始终在回环。
-2. **手机不持有 DSH Cookie**：网关持有并注入，设备使用独立 HMAC 会话。
-3. **微信与网页单通道接管**：有微信上下文时微信处理审批/提问，避免网页残留“等待审批”弹窗。
-4. **微信不是第二套 DSH**：微信会话仍是一个普通 DSH Session，桌面端可在对应 workspace 看到。
-5. **通知不是审批**：完成通知、审批、提问是三条独立链路，分别限流和记录。
-6. **默认回退网页**：没有微信上下文、复杂交互、timed 失效或发送失败时，不阻塞 DSH。
+1. **DSH is not exposed publicly**: the public internet reaches only the gateway; DSH always stays on loopback.
+2. **The phone does not hold the DSH Cookie**: the gateway holds and injects it, and devices use independent HMAC sessions.
+3. **WeChat and the web page take over through a single channel**: when a WeChat context exists, WeChat handles approvals/questions, avoiding a lingering "waiting for approval" prompt on the web page.
+4. **WeChat is not a second DSH**: a WeChat session is still an ordinary DSH Session, visible on desktop in the corresponding workspace.
+5. **Notifications are not approvals**: completion notices, approvals and questions are three independent paths with separate rate limits and records.
+6. **Fall back to the web page by default**: without a WeChat context, for complex interactions, when timed handling fails, or when sending fails, DSH is never blocked.

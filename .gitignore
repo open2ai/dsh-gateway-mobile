@@ -4,6 +4,7 @@ node_modules/
 dist/
 lib/
 web/assets/*.js
+web/assets/build.json
 *.log
 *.tgz
 *.zip

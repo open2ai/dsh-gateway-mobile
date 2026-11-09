@@ -38,6 +38,7 @@ export const CODES = Object.freeze({
   TUNNEL_NOT_CONNECTED: 4007,
   OAUTH_NOT_CONFIGURED: 4008,
   DEVICE_NOT_DELETABLE: 4009,
+  OAUTH_NOT_ALLOWED: 4010,
 
   INTERNAL_ERROR: 5001,
   TUNNEL_START_FAILED: 5002,
@@ -91,6 +92,7 @@ const MESSAGES: Readonly<Record<number, ApiMessage>> = Object.freeze({
   [CODES.TUNNEL_NOT_CONNECTED]: { zh: '隧道未连接，服务暂不可用', en: 'Tunnel is not connected' },
   [CODES.OAUTH_NOT_CONFIGURED]: { zh: '该 OAuth 提供商未配置', en: 'OAuth provider is not configured' },
   [CODES.DEVICE_NOT_DELETABLE]: { zh: '只能永久删除已撤销或已过期的设备', en: 'Only revoked or expired devices can be deleted' },
+  [CODES.OAUTH_NOT_ALLOWED]: { zh: '该账号不在允许列表中，无法绑定', en: 'This account is not allowed to bind' },
 
   [CODES.INTERNAL_ERROR]: { zh: '服务异常', en: 'Internal error' },
   [CODES.TUNNEL_START_FAILED]: { zh: '隧道启动失败', en: 'Tunnel failed to start' },
@@ -127,6 +129,7 @@ const HTTP_STATUS: Readonly<Record<number, number>> = Object.freeze({
   [CODES.TUNNEL_NOT_CONNECTED]: 503,
   [CODES.OAUTH_NOT_CONFIGURED]: 400,
   [CODES.DEVICE_NOT_DELETABLE]: 409,
+  [CODES.OAUTH_NOT_ALLOWED]: 403,
   [CODES.INTERNAL_ERROR]: 500,
   [CODES.TUNNEL_START_FAILED]: 500,
   [CODES.PROXY_ERROR]: 502,

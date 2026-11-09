@@ -21,11 +21,32 @@ import type { WeixinConfig } from './config.js'
 
 export type WeixinLoginState = 'idle' | 'wait' | 'scaned' | 'pending' | 'confirmed' | 'expired' | 'error'
 
+/** Runtime state of the bot channel (distinct from the transient QR login state). */
+export type WeixinRuntimeState = 'disabled' | 'idle' | 'connecting' | 'connected' | 'degraded' | 'expired'
+
+/** Why an outbound message failed, used for retry/backoff decisions. */
+export type WeixinSendFailureReason = 'auth-expired' | 'rate-limited' | 'network' | 'unknown'
+
 export interface WeixinCredentials {
   token: string
   baseUrl: string
   accountId: string
   savedAt: string
+  /** Salted hash of the bound WeChat user id; the raw id is never persisted. */
+  ownerHash?: string
+  /** Masked owner id for display only. */
+  ownerMasked?: string
+  ownerBoundAt?: number
+}
+
+export interface WeixinOwner {
+  masked: string
+  boundAt: number
+}
+
+export interface WeixinOwnerContext {
+  userId: string
+  token: string
 }
 
 export interface WeixinMessageItem {
@@ -81,11 +102,21 @@ export interface WeixinLoginStatus {
 export interface WeixinStatus {
   enabled: boolean
   connected: boolean
-  state: WeixinLoginState
+  state: WeixinRuntimeState
   accountId?: string
   lastError?: string
   cursor: string
   received: number
+  /** Epoch ms of the most recent long-poll attempt; 0 = never. */
+  lastPollAt: number
+  /** Epoch ms of the most recent successful long-poll; 0 = never. */
+  lastOkAt: number
+  /** Consecutive long-poll failures. */
+  failures: number
+  /** Age of the freshest owner context in ms; -1 when no context is cached. */
+  contextAgeMs: number
+  allowOtherUsers: boolean
+  owner?: WeixinOwner
 }
 
 export interface WeixinInbound {
@@ -116,6 +147,11 @@ interface StoredCredentials {
   payload: string
 }
 
+interface ContextEntry {
+  token: string
+  at: number
+}
+
 interface ApiResponse {
   ret?: number
   errcode?: number
@@ -134,6 +170,55 @@ interface ApiResponse {
 
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com'
 const LOGIN_HEADER_VERSION = '1'
+/** A cached message context_token is only usable for this long after last contact. */
+const CONTEXT_TTL_MS = 30 * 60_000
+/** Backoff after the first -14 response, before discarding credentials. */
+const AUTH_EXPIRED_BACKOFF_MS = 1_000
+const SESSION_EXPIRED_MESSAGE = '微信会话已过期，请重新扫码登录'
+const UNAUTHORIZED_MESSAGE = '未授权：该微信账号无权使用此 DSH 网关。'
+
+/** Stable, non-reversible owner identifier (sha256 base64url, 22 chars). */
+export function ownerHash(userId: string): string {
+  return crypto.createHash('sha256').update(String(userId), 'utf8').digest('base64url').slice(0, 22)
+}
+
+/**
+ * Classify an outbound WeChat failure so callers can back off or stop retrying.
+ */
+export function weixinSendFailureReason(error: unknown): WeixinSendFailureReason {
+  if (error instanceof GatewayError) {
+    const reason = error.data.reason
+    if (reason === 'auth-expired' || reason === 'rate-limited' || reason === 'network' || reason === 'unknown') {
+      return reason
+    }
+  }
+  const message = errorMessage(error)
+  const httpStatus = /HTTP\s+(\d{3})/i.exec(message)
+  if (httpStatus) {
+    const status = Number(httpStatus[1])
+    if (status === 401 || status === 403) return 'auth-expired'
+    if (status === 429) return 'rate-limited'
+  }
+  const ret = /ret\s*=\s*(-?\d+)/i.exec(message)
+  if (ret) {
+    const code = Number(ret[1])
+    if (code === -14) return 'auth-expired'
+    if (code === 429) return 'rate-limited'
+  }
+  if (/session (?:has )?expired|登录已失效/i.test(message)) return 'auth-expired'
+  if (/rate.?limit|too many requests|频率|限流/i.test(message)) return 'rate-limited'
+  if (isNetworkError(error) || /fetch failed|ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|socket|network/i.test(message)) {
+    return 'network'
+  }
+  return 'unknown'
+}
+
+function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  if (error.name === 'AbortError' || error.name === 'TimeoutError') return true
+  return error instanceof TypeError
+}
+
 
 export class WeixinChannel {
   private readonly config: WeixinConfig
@@ -154,7 +239,13 @@ export class WeixinChannel {
   private lastError = ''
   private polling = false
   private pollAbort: AbortController | null = null
-  private readonly contexts = new Map<string, string>()
+  private readonly contexts = new Map<string, ContextEntry>()
+  private state: WeixinRuntimeState
+  private lastPollAt = 0
+  private lastOkAt = 0
+  private consecutiveFailures = 0
+  /** Count of consecutive -14 responses; credentials are dropped on the second. */
+  private authExpiredCount = 0
 
   constructor(options: WeixinChannelOptions) {
     this.config = options.config
@@ -163,6 +254,7 @@ export class WeixinChannel {
     this.logger = options.logger
     this.box = options.box
     this.onMessage = options.onMessage
+    this.state = this.enabled ? 'idle' : 'disabled'
   }
 
   get enabled(): boolean {
@@ -175,13 +267,20 @@ export class WeixinChannel {
 
   /** Load and resume an existing bot session. */
   async start(): Promise<void> {
-    if (!this.enabled) return
+    if (!this.enabled) {
+      this.state = 'disabled'
+      return
+    }
     this.credentials = await this.readCredentials()
     if (this.credentials) {
       // Re-encrypt legacy credentials so no historical ilink_user_id remains on disk.
       await this.writeCredentials(this.credentials)
+      // Credentials without an owner hash are migrated when the first message arrives.
+      this.state = this.credentials.ownerHash ? 'connected' : 'connecting'
       this.logger.info(`WeChat bot restored: ${this.credentials.accountId}`)
       this.#startPolling()
+    } else {
+      this.state = 'idle'
     }
   }
 
@@ -193,18 +292,61 @@ export class WeixinChannel {
     this.login = null
     this.pendingCredentials = null
     this.pendingUserId = ''
+    if (this.state !== 'expired') this.state = this.enabled ? 'idle' : 'disabled'
   }
 
   status(): WeixinStatus {
+    const credentials = this.credentials
+    const owner: WeixinOwner | undefined = credentials?.ownerHash
+      ? {
+          masked: credentials.ownerMasked ?? maskWechatId(credentials.ownerHash),
+          boundAt: credentials.ownerBoundAt ?? 0,
+        }
+      : undefined
     return {
       enabled: this.enabled,
       connected: this.connected,
-      state: this.login?.state ?? (this.connected ? 'confirmed' : 'idle'),
-      ...(this.credentials ? { accountId: this.credentials.accountId } : {}),
+      state: this.state,
+      ...(credentials ? { accountId: credentials.accountId } : {}),
       ...(this.lastError ? { lastError: this.lastError } : {}),
       cursor: this.cursor,
       received: this.received,
+      lastPollAt: this.lastPollAt,
+      lastOkAt: this.lastOkAt,
+      failures: this.consecutiveFailures,
+      contextAgeMs: this.contextAgeMs(),
+      allowOtherUsers: this.config.allowOtherUsers === true,
+      ...(owner ? { owner } : {}),
     }
+  }
+
+  /** True when this WeChat user is the account bound at login time. */
+  isOwner(userId: string): boolean {
+    const hash = this.credentials?.ownerHash
+    return Boolean(hash && userId && hash === ownerHash(userId))
+  }
+
+  /** Owner, unrestricted (allowOtherUsers), or explicitly allow-listed by hash. */
+  isAuthorized(userId: string): boolean {
+    if (!userId) return false
+    if (this.isOwner(userId)) return true
+    if (this.config.allowOtherUsers === true) return true
+    const allowed = this.config.allowedUsers ?? []
+    if (allowed.length === 0) return false
+    const hash = ownerHash(userId)
+    return allowed.some((entry) => entry.trim() === hash)
+  }
+
+  /** Last fresh context of the bound owner; survives restarts once the owner messages again. */
+  ownerContext(): WeixinOwnerContext | undefined {
+    const hash = this.credentials?.ownerHash
+    if (!hash) return undefined
+    let best: { userId: string; token: string; at: number } | undefined
+    for (const [userId, entry] of this.contexts) {
+      if (!this.#freshContext(entry) || ownerHash(userId) !== hash) continue
+      if (!best || entry.at > best.at) best = { userId, token: entry.token, at: entry.at }
+    }
+    return best ? { userId: best.userId, token: best.token } : undefined
   }
 
   /** Request a fresh login QR; admin-only. */
@@ -250,14 +392,22 @@ export class WeixinChannel {
           this.logger.audit({ action: 'weixin.login.pending', accountId })
           return this.loginStatus()
         }
-        this.credentials = { token, baseUrl, accountId, savedAt: new Date().toISOString() }
+        this.credentials = {
+          token,
+          baseUrl,
+          accountId,
+          savedAt: new Date().toISOString(),
+          ...credentialOwner(userId),
+        }
         await this.writeCredentials(this.credentials)
         this.pendingCredentials = null
         this.pendingUserId = ''
         this.login = null
         this.cursor = ''
         this.contexts.clear()
+        this.lastInbound = undefined
         this.lastError = ''
+        this.state = 'connected'
         this.logger.audit({ action: 'weixin.login', accountId })
         this.onCredentialsChanged?.()
         this.#startPolling()
@@ -294,15 +444,22 @@ export class WeixinChannel {
       this.logger.audit({ action: 'weixin.login.denied' })
       return this.loginStatus()
     }
-    this.credentials = pending
-    await this.writeCredentials(pending)
+    const owner = credentialOwner(this.pendingUserId)
+    this.credentials = { ...pending, ...owner }
+    await this.writeCredentials(this.credentials)
     this.pendingCredentials = null
     this.pendingUserId = ''
     this.login = null
     this.cursor = ''
     this.contexts.clear()
+    this.lastInbound = undefined
     this.lastError = ''
-    this.logger.audit({ action: 'weixin.login', accountId: pending.accountId })
+    this.state = 'connected'
+    this.logger.audit({
+      action: 'weixin.login',
+      accountId: pending.accountId,
+      ...(owner.ownerMasked ? { maskedOwner: owner.ownerMasked } : {}),
+    })
     this.onCredentialsChanged?.()
     this.#startPolling()
     return this.loginStatus()
@@ -314,8 +471,14 @@ export class WeixinChannel {
     this.credentials = null
     this.cursor = ''
     this.contexts.clear()
+    this.lastInbound = undefined
     this.received = 0
     this.lastError = ''
+    this.lastPollAt = 0
+    this.lastOkAt = 0
+    this.consecutiveFailures = 0
+    this.authExpiredCount = 0
+    this.state = this.enabled ? 'idle' : 'disabled'
     await fsp.rm(this.file, { force: true })
     this.logger.audit({ action: 'weixin.logout' })
     this.onCredentialsChanged?.()
@@ -340,13 +503,41 @@ export class WeixinChannel {
         },
         base_info: { channel_version: this.config.channelVersion },
       }
-      await this.businessRequest('/ilink/bot/sendmessage', body)
+      try {
+        const response = await this.businessRequest('/ilink/bot/sendmessage', body)
+        const ret = Number(response.ret ?? response.errcode ?? 0)
+        if (ret !== 0) {
+          const reason: WeixinSendFailureReason = ret === -14 ? 'auth-expired' : ret === 429 ? 'rate-limited' : 'unknown'
+          throw new GatewayError(
+            CODES.PROXY_ERROR,
+            { reason },
+            502,
+            `WeChat sendmessage ret=${ret}${response.errmsg ? `: ${response.errmsg}` : ''}`,
+          )
+        }
+      } catch (error) {
+        if (error instanceof GatewayError && typeof error.data.reason === 'string') throw error
+        throw new GatewayError(CODES.PROXY_ERROR, { reason: weixinSendFailureReason(error) }, 502, errorMessage(error))
+      }
     }
   }
 
-  /** Last known context token for a user, used by the future DSH bridge. */
+  /** Last known context token for a user, used by the DSH bridge and notifier. */
   contextFor(userId: string): string | undefined {
-    return this.contexts.get(userId)
+    const entry = this.contexts.get(userId)
+    return entry && this.#freshContext(entry) ? entry.token : undefined
+  }
+
+  #freshContext(entry: ContextEntry): boolean {
+    return Date.now() - entry.at <= CONTEXT_TTL_MS
+  }
+
+  private contextAgeMs(): number {
+    let latest = 0
+    for (const entry of this.contexts.values()) {
+      if (entry.at > latest) latest = entry.at
+    }
+    return latest > 0 ? Math.max(0, Date.now() - latest) : -1
   }
 
   private loginStatus(): WeixinLoginStatus {
@@ -400,8 +591,8 @@ export class WeixinChannel {
   }
 
   async #pollLoop(controller: AbortController): Promise<void> {
-    let failures = 0
     while (this.polling && !controller.signal.aborted && this.credentials) {
+      this.lastPollAt = Date.now()
       try {
         const response = await this.businessRequest('/ilink/bot/getupdates', {
           get_updates_buf: this.cursor,
@@ -409,14 +600,26 @@ export class WeixinChannel {
         }, 45_000)
         const ret = Number(response.ret ?? response.errcode ?? 0)
         if (ret === -14) {
-          this.lastError = '微信会话已过期，请重新扫码登录'
-          this.credentials = null
-          this.cursor = ''
-          this.contexts.clear()
-          this.polling = false
-          await fsp.rm(this.file, { force: true })
-          this.logger.warn('WeChat session expired; QR login required')
-          return
+          // One -14 can be a transient server hiccup; only the second consecutive
+          // response discards the credentials and forces a re-login.
+          this.consecutiveFailures += 1
+          this.authExpiredCount += 1
+          this.lastError = SESSION_EXPIRED_MESSAGE
+          if (this.authExpiredCount >= 2) {
+            this.credentials = null
+            this.cursor = ''
+            this.contexts.clear()
+            this.lastInbound = undefined
+            this.polling = false
+            await fsp.rm(this.file, { force: true })
+            this.state = 'expired'
+            this.logger.warn('WeChat session expired; QR login required')
+            return
+          }
+          this.state = 'degraded'
+          this.logger.warn('WeChat getupdates returned -14 (session may be expired); retrying once before discarding credentials')
+          await sleep(AUTH_EXPIRED_BACKOFF_MS, controller.signal)
+          continue
         }
         if (ret !== 0) {
           throw new Error(`WeChat getupdates ret=${ret}${response.errmsg ? `: ${response.errmsg}` : ''}`)
@@ -427,22 +630,39 @@ export class WeixinChannel {
             this.logger.warn(`WeChat message processing failed: ${errorMessage(error)}`)
           })
         }
-        failures = 0
+        this.consecutiveFailures = 0
+        this.authExpiredCount = 0
+        this.lastOkAt = Date.now()
+        this.lastError = ''
+        // Legacy credentials stay "connecting" until the first message migrates the owner.
+        this.state = this.credentials?.ownerHash ? 'connected' : 'connecting'
       } catch (error) {
         if (controller.signal.aborted) return
-        failures += 1
+        this.consecutiveFailures += 1
         this.lastError = errorMessage(error)
-        this.logger.warn(`WeChat long-poll failed (${failures}): ${this.lastError}`)
-        await sleep(failures >= 3 ? 30_000 : 2_000, controller.signal)
+        if (this.consecutiveFailures >= 3) this.state = 'degraded'
+        this.logger.warn(`WeChat long-poll failed (${this.consecutiveFailures}): ${this.lastError}`)
+        await sleep(this.consecutiveFailures >= 3 ? 30_000 : 2_000, controller.signal)
       }
     }
   }
 
   async #acceptMessage(message: WeixinMessage): Promise<void> {
-    if (typeof message.from_user_id === 'string' && typeof message.context_token === 'string') {
-      this.contexts.set(message.from_user_id, message.context_token)
-    }
+    const userId = message.from_user_id
+    const contextToken = message.context_token
+    if (typeof userId !== 'string' || typeof contextToken !== 'string') return
+    this.contexts.set(userId, { token: contextToken, at: Date.now() })
     this.received += 1
+    // Legacy credential files have no owner hash: trust the first inbound sender
+    // once, persist only the hash, and audit the migration.
+    if (this.credentials && !this.credentials.ownerHash) await this.#migrateOwner(userId)
+    if (!this.isAuthorized(userId)) {
+      this.logger.audit({ action: 'weixin.message.rejected', maskedUserId: maskWechatId(userId) })
+      await this.sendText(userId, UNAUTHORIZED_MESSAGE, contextToken).catch((error: unknown) => {
+        this.logger.debug(`WeChat unauthorized notice failed: ${errorMessage(error)}`)
+      })
+      return
+    }
     const text = message.item_list?.find((item) => item.type === 1)?.text_item?.text ?? ''
     const images: WeixinInboundImage[] = []
     for (const [index, item] of (message.item_list ?? []).entries()) {
@@ -456,9 +676,7 @@ export class WeixinChannel {
     }
     if (!text && images.length === 0) return
     this.logger.debug(`WeChat message received${images.length ? ` [${images.length} image]` : ''}`)
-    const userId = message.from_user_id
-    const contextToken = message.context_token
-    if (typeof userId === 'string' && typeof contextToken === 'string' && this.onMessage) {
+    if (this.onMessage) {
       const inbound: WeixinInbound = {
         userId,
         contextToken,
@@ -469,6 +687,26 @@ export class WeixinChannel {
       this.lastInbound = inbound
       this.onMessage(inbound)
     }
+  }
+
+  async #migrateOwner(userId: string): Promise<void> {
+    const credentials = this.credentials
+    if (!credentials || credentials.ownerHash) return
+    const hash = ownerHash(userId)
+    const masked = maskWechatId(userId)
+    this.credentials = {
+      ...credentials,
+      ownerHash: hash,
+      ownerMasked: masked,
+      ownerBoundAt: Date.now(),
+    }
+    this.state = 'connected'
+    try {
+      await this.writeCredentials(this.credentials)
+    } catch (error) {
+      this.logger.warn(`Failed to persist migrated WeChat owner: ${errorMessage(error)}`)
+    }
+    this.logger.audit({ action: 'weixin.owner.migrated', maskedUserId: masked })
   }
 
   private async downloadImage(
@@ -504,6 +742,9 @@ export class WeixinChannel {
         accountId: value.accountId,
         savedAt: value.savedAt,
         baseUrl: value.baseUrl || this.config.baseUrl || DEFAULT_BASE_URL,
+        ...(typeof value.ownerHash === 'string' ? { ownerHash: value.ownerHash } : {}),
+        ...(typeof value.ownerMasked === 'string' ? { ownerMasked: value.ownerMasked } : {}),
+        ...(typeof value.ownerBoundAt === 'number' ? { ownerBoundAt: value.ownerBoundAt } : {}),
       }
     } catch {
       return null
@@ -571,6 +812,18 @@ function maskWechatId(userId: string): string {
   const suffix = at >= 0 ? userId.slice(at) : ''
   if (local.length <= 8) return `${local.slice(0, 3)}***${suffix}`
   return `${local.slice(0, 4)}…${local.slice(-4)}${suffix}`
+}
+
+/** Build the persisted owner fields from a raw user id; never stores the raw id. */
+function credentialOwner(
+  userId: string,
+): Partial<Pick<WeixinCredentials, 'ownerHash' | 'ownerMasked' | 'ownerBoundAt'>> {
+  if (!userId) return {}
+  return {
+    ownerHash: ownerHash(userId),
+    ownerMasked: maskWechatId(userId),
+    ownerBoundAt: Date.now(),
+  }
 }
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024

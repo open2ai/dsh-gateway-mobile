@@ -1,5 +1,7 @@
 # Security notes
 
+[English](./security.md) | [中文](./security.zh.md)
+
 ## Assets
 
 | Asset | Exposure |
@@ -8,6 +10,8 @@
 | `$DSH_HOME` credentials and session logs | Source code, keys, conversation history |
 | DSH owner cookie / launch token | Full owner API access |
 | Phone pairing code / session cookie | Access to the gateway, hence DSH |
+| WeChat owner identity (salted hash only) | Can drive a DSH session and answer approvals |
+| `secret-keys.json` | Decrypts persisted WeChat credentials and signs sessions |
 | Approval channel | Can approve dangerous commands |
 | OAuth client secrets | Provider account abuse (host-side only) |
 
@@ -37,6 +41,12 @@
 | DSH cookie kept in process; client cookies stripped | `proxy.js` |
 | Redacted log/audit trail | `logger.js` |
 | Config secret data never copied into the phone UI | `oauth.js`, `gateway.js` |
+| WeChat owner binding: first approved account becomes the only sender (salted hash on disk) | `weixin.ts`, `weixin-bridge.ts` |
+| WeChat sender allowlist (`allowOtherUsers`, `allowedUsers`) with audit of rejected senders | `weixin.ts` |
+| OAuth identity allowlist (`auth.oauthAllowedUsers`) | `oauth.ts` |
+| Kid-scoped AES-256-GCM/HMAC keys with rotation and a five-key retention window | `store.ts`, `sessions.ts` |
+| Pairing codes redacted from logs and audit (`****-XY`) | `pairing.ts`, `index.ts` |
+| Filtered audit export (loopback-only) | `logger.ts`, `routes/admin.ts` |
 | Local admin bootstrap (no session) limited to loopback + non-proxied requests | `gateway.js#authenticate` |
 
 ## Pairing and session lifecycle
@@ -72,6 +82,31 @@ be revoked globally by deleting `client-connection/browser-session` and restarti
   from the injected boot graph.
 - No SLA, 200 in-flight requests; Cloudflare may throttle.
 - It is a testing/development facility; not a production exposure mechanism.
+
+## WeChat sender trust boundary
+
+Approving the QR login records that WeChat account as the channel **owner**: a salted
+SHA-256 hash plus a masked label is persisted, the raw `ilink_user_id` stays in memory. Every
+inbound message is checked before it reaches DSH:
+
+- the owner is accepted;
+- other senders are rejected by default (audited, and told once that the bot is private);
+- `weixin.allowOtherUsers` opens the bot; `weixin.allowedUsers` adds specific hashed ids.
+
+Legacy credentials created before this boundary use trust-on-first-use: the first inbound
+message after the upgrade becomes the owner and the migration is audited. Send one message
+from the phone/account you actually own immediately after upgrading; anyone who can already
+message the bot before you do could otherwise claim it. Completion notices are only sent to
+the owner's context token, and contexts expire after 30 minutes without activity.
+
+## Key rotation
+
+`<dataDir>/secret-keys.json` holds up to five AES-256-GCM/HMAC keys with stable ids (`kid`).
+Session cookies and encrypted WeChat credentials embed the kid that produced them, so old
+cookies and ciphertext keep verifying during the retention window while new material uses
+the active key. Rotation (`POST /admin/key/rotate`) is loopback-only and CSRF-guarded; it
+does **not** invalidate existing sessions. Legacy `secret.key` files are migrated as `k1`
+and left in place for rollback; back up `secret-keys.json` before rotating.
 
 ## Local admin without a session
 

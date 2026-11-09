@@ -288,7 +288,17 @@ html, body.shell-body { height: 100%; overflow: hidden; }
   border: 2.5px solid var(--border-2); border-top-color: var(--accent);
   animation: spin 0.9s linear infinite;
 }
+.shell-spinner[hidden] { display: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.shell-timeout {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  max-width: 320px; padding: 0 24px; text-align: center;
+}
+.shell-timeout[hidden] { display: none; }
+.shell-timeout-text { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.shell-timeout-actions { display: flex; gap: 10px; }
+.shell-timeout-actions .btn { min-height: 42px; padding: 8px 16px; }
+.shell-loading span[data-i18n="loading"] { text-align: center; padding: 0 24px; }
 
 /* footer ------------------------------------------------------------------ */
 footer {

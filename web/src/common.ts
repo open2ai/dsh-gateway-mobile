@@ -61,6 +61,15 @@ const I18N: Record<Language, Dictionary> = {
     unbind: '解除绑定',
     openInComputer: '请在电脑上打开此页面',
     networkError: '网络错误，请检查隧道状态',
+    syncState: '同步状态',
+    syncOnline: '已同步',
+    syncOffline: '离线',
+    syncDegraded: '网络不稳定',
+    lastSync: '上次同步',
+    syncNever: '尚未同步',
+    shellTimeout: '加载超时，可能是网络问题或 DSH 尚未就绪',
+    retryHint: '正在自动重试…',
+    retryNow: '立即重试',
     copied: '已复制',
     confirm: '确定',
     cancel: '取消',
@@ -165,6 +174,15 @@ const I18N: Record<Language, Dictionary> = {
     unbind: 'Unbind',
     openInComputer: 'Open this page on the computer',
     networkError: 'Network error. Check the tunnel.',
+    syncState: 'Sync status',
+    syncOnline: 'Synced',
+    syncOffline: 'Offline',
+    syncDegraded: 'Unstable network',
+    lastSync: 'Last sync',
+    syncNever: 'Not synced yet',
+    shellTimeout: 'Loading timed out. Check your network or whether DSH is ready.',
+    retryHint: 'Retrying automatically…',
+    retryNow: 'Retry now',
     copied: 'Copied',
     confirm: 'Confirm',
     cancel: 'Cancel',
@@ -214,7 +232,7 @@ const I18N: Record<Language, Dictionary> = {
   },
 }
 
-const lang: Language = (navigator.language || 'zh').toLowerCase().startsWith('en') ? 'en' : 'zh'
+const lang: Language = typeof navigator !== 'undefined' && (navigator.language || 'zh').toLowerCase().startsWith('en') ? 'en' : 'zh'
 
 export function t(key: string): string {
   return I18N[lang][key] ?? I18N.zh[key] ?? key
@@ -263,10 +281,81 @@ export function toast(message: string, type = 'error'): void {
   toastTimer = setTimeout(() => node?.classList.remove('show'), 3000)
 }
 
+// ---------------------------------------------------------------------------
+// Weak-network handling: exponential backoff for GETs + connection state
+// ---------------------------------------------------------------------------
+
+export type ConnectionState = 'online' | 'offline' | 'degraded'
+
+/** Delays tried after a failed GET; also the maximum number of retries. */
+export const GET_RETRY_DELAYS: readonly number[] = [500, 1000, 2000]
+
+/** Backoff delay for a zero-based retry attempt (clamped to the last step). */
+export function retryDelayMs(attempt: number): number {
+  const index = Math.max(0, Math.min(Math.trunc(attempt), GET_RETRY_DELAYS.length - 1))
+  return GET_RETRY_DELAYS[index] ?? 500
+}
+
+/** Status codes worth retrying for an idempotent request. */
+export function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
+function browserOnline(): boolean {
+  return typeof navigator === 'undefined' || navigator.onLine !== false
+}
+
+let connection: ConnectionState = browserOnline() ? 'online' : 'offline'
+const connectionListeners = new Set<(state: ConnectionState) => void>()
+
+/** Current connection state derived from the last request result and the browser. */
+export function connectionState(): ConnectionState {
+  return browserOnline() ? connection : 'offline'
+}
+
+/**
+ * Subscribe to connection state changes. Listeners run immediately with the
+ * current state and again whenever the page resumes or connectivity changes;
+ * pages use that to refresh their data after a weak-network period.
+ */
+export function onConnectionChange(listener: (state: ConnectionState) => void): () => void {
+  connectionListeners.add(listener)
+  listener(connectionState())
+  return () => { connectionListeners.delete(listener) }
+}
+
+function notifyConnection(state: ConnectionState): void {
+  connection = state
+  for (const listener of [...connectionListeners]) {
+    try { listener(state) } catch { /* listener failures must not break requests */ }
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('offline', () => notifyConnection('offline'))
+  window.addEventListener('online', () => notifyConnection('online'))
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    if (!browserOnline()) {
+      notifyConnection('offline')
+      return
+    }
+    // Resume: let subscribers retry immediately even if the state was already
+    // "online"; a degraded state is cleared optimistically for the retry.
+    notifyConnection(connection === 'degraded' ? 'online' : connectionState())
+  })
+}
+
 export interface ApiOptions {
   method?: string
   body?: unknown
   redirectOnAuth?: boolean
+  /** Force/disable backoff retries; defaults to true for GET, false otherwise. */
+  retry?: boolean
 }
 
 export class ApiError extends Error {
@@ -295,25 +384,46 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
     headers['content-type'] = 'application/json'
     body = JSON.stringify(options.body)
   }
-  let response: Response
-  try {
-    response = await fetch(path, { method, headers, body: body ?? null, credentials: 'same-origin' })
-  } catch {
-    throw new ApiError(t('networkError'), 0)
+  const retryable = options.retry ?? method === 'GET'
+  const maxRetries = retryable ? GET_RETRY_DELAYS.length : 0
+  let response: Response | undefined
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      response = await fetch(path, { method, headers, body: body ?? null, credentials: 'same-origin' })
+    } catch {
+      if (attempt < maxRetries) {
+        notifyConnection(browserOnline() ? 'degraded' : 'offline')
+        await sleep(retryDelayMs(attempt))
+        continue
+      }
+      notifyConnection(browserOnline() ? 'degraded' : 'offline')
+      throw new ApiError(t('networkError'), 0)
+    }
+    // Only idempotent requests are retried, and only for transient failures.
+    if (attempt < maxRetries && isRetryableStatus(response.status)) {
+      notifyConnection('degraded')
+      await sleep(retryDelayMs(attempt))
+      continue
+    }
+    break
   }
+  if (!response) throw new ApiError(t('networkError'), 0)
   let envelope: ApiEnvelope<T>
   try {
     envelope = (await response.json()) as ApiEnvelope<T>
   } catch {
+    notifyConnection(response.status >= 500 ? 'degraded' : 'online')
     throw new ApiError(`HTTP ${response.status}`, 5001)
   }
   if (!response.ok || envelope.code !== 0) {
+    notifyConnection(isRetryableStatus(response.status) ? 'degraded' : 'online')
     if (options.redirectOnAuth !== false && [2001, 2002, 2003, 3001, 3002].includes(envelope.code)) {
       const next = encodeURIComponent(location.pathname + location.search)
       location.replace(`/mobile/pair?next=${next}`)
     }
     throw new ApiError(envelope.message || `HTTP ${response.status}`, envelope.code, envelope.data)
   }
+  notifyConnection('online')
   return envelope.data
 }
 

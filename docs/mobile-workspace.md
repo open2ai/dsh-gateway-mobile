@@ -1,5 +1,7 @@
 # Mobile workspace creation
 
+[English](./mobile-workspace.md) | [中文](./mobile-workspace.zh.md)
+
 DSH's **New Workspace** flow asks the host for a directory. By default the
 `directory-picker-auto` row chooses a backend at boot:
 

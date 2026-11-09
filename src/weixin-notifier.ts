@@ -12,7 +12,8 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { Logger } from './logger.js'
-import type { WeixinChannel } from './weixin.js'
+import { weixinSendFailureReason } from './weixin.js'
+import type { WeixinChannel, WeixinSendFailureReason } from './weixin.js'
 import type { SessionControllerLike } from './weixin-bridge.js'
 
 export interface WeixinNotifyConfig {
@@ -66,9 +67,18 @@ export interface WeixinNotifyPolicy {
   maxPerHour: number
 }
 
+export interface WeixinNotifyFailure {
+  at: number
+  reason: WeixinSendFailureReason
+  message: string
+}
+
 export interface WeixinNotifyStatus extends WeixinNotifyPolicy {
   enabled: boolean
   recent: WeixinNotifyHistoryEntry[]
+  lastFailure?: WeixinNotifyFailure
+  /** Deliveries abandoned because the owner WeChat session is no longer valid. */
+  permanentFailureCount: number
 }
 
 interface StateFile {
@@ -111,6 +121,12 @@ export class WeixinNotifier {
   private enabled = false
   private stateLoaded = false
   private flushing = false
+  private lastFailure: WeixinNotifyFailure | undefined
+  private permanentFailureCount = 0
+  private sendAttempts = 0
+  /** Set while delivery is paused because the owner session expired. */
+  private authExpired = false
+  private authExpiredToken: string | undefined
 
   constructor(options: NotifyOptions) {
     this.channel = options.channel
@@ -137,6 +153,8 @@ export class WeixinNotifier {
       globalIntervalMs: this.config.globalIntervalMs,
       maxPerHour: this.config.maxPerHour,
       recent: this.history.slice(0, HISTORY_LIMIT),
+      permanentFailureCount: this.permanentFailureCount,
+      ...(this.lastFailure ? { lastFailure: this.lastFailure } : {}),
     }
   }
 
@@ -190,10 +208,22 @@ export class WeixinNotifier {
     this.watchers.clear()
   }
 
+  /**
+   * Delivery target is the bound owner's freshest context. Legacy in-memory
+   * channels without ownerContext() fall back to lastInbound for compatibility.
+   */
+  private target(): { userId: string; contextToken: string } | undefined {
+    const owner = typeof this.channel.ownerContext === 'function' ? this.channel.ownerContext() : undefined
+    if (owner) return { userId: owner.userId, contextToken: owner.token }
+    const inbound = this.channel.lastInbound
+    if (inbound) return { userId: inbound.userId, contextToken: inbound.contextToken }
+    return undefined
+  }
+
   private async scan(): Promise<void> {
     const controller = this.controller
     if (!this.running || !controller) return
-    if (!this.channel.connected || !this.channel.lastInbound) {
+    if (!this.channel.connected || !this.target()) {
       for (const watcher of this.watchers.values()) watcher.abort.abort()
       this.watchers.clear()
       return
@@ -295,6 +325,19 @@ export class WeixinNotifier {
 
   private async flush(): Promise<void> {
     if (!this.running || this.flushing || this.pending.length === 0) return
+    const target = this.target()
+    // A fresh owner context means the bot is connected again: resume paused delivery.
+    if (this.authExpired && target && target.contextToken !== this.authExpiredToken) {
+      this.authExpired = false
+      this.authExpiredToken = undefined
+      this.sendAttempts = 0
+    }
+    if (!target) {
+      await this.savePending().catch(() => {})
+      this.scheduleFlush(RETRY_MS)
+      return
+    }
+    if (this.authExpired) return
     const now = Date.now()
     const limitRemaining = this.hourLimitRemaining(now)
     if (limitRemaining <= 0) {
@@ -326,20 +369,18 @@ export class WeixinNotifier {
     const bounded = ready.slice(0, Math.min(ready.length, limitRemaining))
     const overflow = ready.slice(bounded.length)
     if (overflow.length) this.pending.unshift(...overflow)
-    const lastInbound = this.channel.lastInbound
-    if (!lastInbound) {
-      this.pending.unshift(...bounded)
-      await this.savePending()
-      this.scheduleFlush(RETRY_MS)
-      return
-    }
 
     this.flushing = true
+    let retryDelay: number | undefined
+    let paused = false
     try {
       const text = this.format(bounded)
-      await this.channel.sendText(lastInbound.userId, text, lastInbound.contextToken)
+      await this.channel.sendText(target.userId, text, target.contextToken)
       this.lastSentAt = Date.now()
       this.sentTimes.push(this.lastSentAt)
+      this.sendAttempts = 0
+      this.authExpired = false
+      this.authExpiredToken = undefined
       this.history.unshift({ at: this.lastSentAt, count: bounded.length, text })
       if (this.history.length > HISTORY_LIMIT) this.history.length = HISTORY_LIMIT
       for (const item of bounded) this.sessionCooldown.set(item.sessionId, this.lastSentAt)
@@ -347,13 +388,27 @@ export class WeixinNotifier {
       await Promise.all([this.savePending(), this.saveState()])
     } catch (error) {
       this.pending.unshift(...bounded)
-      this.logger.warn(`WeChat notification send failed: ${errorMessage(error)}`)
+      const reason = weixinSendFailureReason(error)
+      const message = errorMessage(error)
+      this.lastFailure = { at: Date.now(), reason, message }
+      this.logger.warn(`WeChat notification send failed (${reason}): ${message}`)
+      if (reason === 'auth-expired') {
+        // The owner must re-scan the QR code; retrying cannot succeed, so keep the
+        // items in the undelivered queue and wait for a new owner context.
+        this.permanentFailureCount += 1
+        this.authExpired = true
+        this.authExpiredToken = target.contextToken
+        paused = true
+      } else {
+        this.sendAttempts += 1
+        retryDelay = this.sendAttempts <= 3 ? 1000 * 2 ** (this.sendAttempts - 1) : RETRY_MS
+        if (this.sendAttempts > 3) this.sendAttempts = 0
+      }
       await this.savePending()
-      this.scheduleFlush(RETRY_MS)
     } finally {
       this.flushing = false
     }
-    if (this.pending.length) this.scheduleFlush(this.config.debounceMs)
+    if (this.pending.length && !paused) this.scheduleFlush(retryDelay ?? this.config.debounceMs)
   }
 
   private format(items: NotificationItem[]): string {

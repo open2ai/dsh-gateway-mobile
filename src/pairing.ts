@@ -65,7 +65,10 @@ export class PairingManager {
       usedAt: null,
       usedBy: null,
     }
-    this.logger.info(`Pairing code issued (valid ${this.ttlSeconds}s): ${formatPairingCode(code)}`)
+    // Never log or audit the full code: the masked form keeps the last two
+    // characters so an operator can correlate it with the admin page.
+    this.logger.info(`Pairing code issued (valid ${this.ttlSeconds}s): ****-${code.slice(-2)}`)
+    this.logger.audit({ action: 'pairing.issued' })
     return this.describe()
   }
 

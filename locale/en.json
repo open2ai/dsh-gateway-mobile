@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "DSH Mobile & WeChat Gateway",
+    "description": "Reach your local DSH from a phone through a Cloudflare Quick Tunnel, with optional WeChat ClawBot/iLink pairing, approval and question forwarding, and completion notices.",
+    "detail": "docs/DETAIL.md"
+  }
+}

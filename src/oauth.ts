@@ -220,13 +220,37 @@ export class OAuthManager {
     const username = String(user.login ?? user.name ?? user.username ?? '').trim()
     const providerUserId = String(user.id ?? user.login ?? '').trim()
     if (!username || !providerUserId) throw new GatewayError(CODES.OAUTH_USER_INFO_FAILED, {}, 400, 'user info missing id/login')
-    return {
+    const binding: OAuthBinding = {
       provider,
       providerUserId,
       username,
       avatarUrl: String(user.avatar_url ?? '').slice(0, 512),
       boundAt: Date.now(),
     }
+    this.#assertAllowed(binding)
+    return binding
+  }
+
+  /**
+   * Enforce `auth.oauthAllowedUsers` (empty list means no restriction). Entries
+   * match `provider:login` or `provider:providerUserId`, case-insensitively.
+   */
+  #assertAllowed(binding: OAuthBinding): void {
+    const configured = this.config.auth.oauthAllowedUsers
+    const allowed = Array.isArray(configured) ? configured : []
+    if (allowed.length === 0) return
+    const candidates = new Set([
+      `${binding.provider}:${binding.username}`.toLowerCase(),
+      `${binding.provider}:${binding.providerUserId}`.toLowerCase(),
+    ])
+    const matched = allowed.some((entry) => {
+      if (typeof entry !== 'string') return false
+      const normalized = entry.trim().toLowerCase()
+      return normalized !== '' && candidates.has(normalized)
+    })
+    if (matched) return
+    this.logger.audit({ action: 'oauth.rejected', provider: binding.provider, username: binding.username })
+    throw new GatewayError(CODES.OAUTH_NOT_ALLOWED, { provider: binding.provider })
   }
 
   unbind(deviceId: string, provider: OAuthProvider): ReturnType<DeviceManager['unbindOAuth']> {

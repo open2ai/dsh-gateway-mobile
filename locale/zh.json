@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "DSH 手机与微信网关",
+    "description": "通过 Cloudflare Quick Tunnel 让手机安全访问本机 DSH，并可选接入微信 ClawBot/iLink：一次性配对、审批与提问转发、完成通知。",
+    "detail": "docs/DETAIL.zh.md"
+  }
+}

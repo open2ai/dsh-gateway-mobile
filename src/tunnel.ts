@@ -1,10 +1,14 @@
 /**
- * Cloudflare Quick Tunnel process manager.
+ * Cloudflare Tunnel process manager.
  *
- * `cloudflared tunnel --url http://127.0.0.1:<gatewayPort>` is started as an
- * outbound-only child. The gateway parses the printed trycloudflare.com URL,
- * reconnects with capped exponential backoff, and exposes a small status
- * object for the admin UI and API.
+ * Quick mode runs `cloudflared tunnel --url http://127.0.0.1:<gatewayPort>` as
+ * an outbound-only child and parses the printed trycloudflare.com URL.
+ * Named mode runs `cloudflared tunnel run --token ... --metrics
+ * 127.0.0.1:<metricsPort>` and uses cloudflared's local readiness endpoint
+ * (`GET /ready`) instead of parsing stdout.
+ *
+ * Both modes reconnect with capped exponential backoff and expose a small
+ * status object for the admin UI and the deep-health API.
  *
  * @module dsh-gateway-mobile/lib/tunnel
  */
@@ -21,7 +25,14 @@ import { errorMessage, sleep, stripAnsi } from './util.js'
 
 const URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/gi
 
-export type TunnelState = 'disabled' | 'starting' | 'connected' | 'reconnecting' | 'stopped' | 'error'
+/** Readiness probe budget for a freshly spawned Named Tunnel. */
+const DEFAULT_READY_TIMEOUT_MS = 20_000
+const DEFAULT_READY_POLL_INTERVAL_MS = 500
+const READY_REQUEST_TIMEOUT_MS = 1_000
+
+export type TunnelState = 'disabled' | 'starting' | 'connected' | 'reconnecting' | 'stopped' | 'error' | 'degraded'
+
+export type TunnelHealth = 'ok' | 'degraded' | 'unknown' | 'disabled'
 
 export interface TunnelStatus {
   enabled: boolean
@@ -36,6 +47,18 @@ export interface TunnelStatus {
   lastError: string
   binary: string
   protocol: string
+  /** Live health, derived from the state in Quick mode and probed in Named mode. */
+  health: TunnelHealth
+  /** Epoch ms of the last successful readiness check; 0 = never. */
+  lastHealthyAt: number
+  /** Loopback metrics/readiness port used by Named mode. */
+  metricsPort: number
+  /** Ready connector count reported by cloudflared (Named mode). */
+  connectors?: number
+  /** Number of explicit restart() calls since the manager was created. */
+  restarts: number
+  /** Epoch ms when a new public URL replaced a previously known one; 0 = never changed. */
+  lastUrlChangedAt: number
 }
 
 interface TunnelChild extends EventEmitter {
@@ -47,11 +70,27 @@ interface TunnelChild extends EventEmitter {
 
 type TunnelSpawn = (command: string, args: string[], options: SpawnOptions) => TunnelChild
 
+/** Minimal HTTP response shape the readiness probe needs (injectable for tests). */
+export interface TunnelFetchResponse {
+  ok: boolean
+  status?: number
+  json?(): Promise<unknown>
+}
+
+/** Injectable fetch used for the cloudflared `/ready` probe. */
+export type TunnelFetch = (url: string, init?: { signal?: AbortSignal }) => Promise<TunnelFetchResponse>
+
 export interface TunnelManagerOptions {
   config: GatewayConfig
   logger: Logger
   gatewayPort: () => number
   spawnImpl?: TunnelSpawn
+  /** Override the readiness probe (defaults to global fetch). */
+  fetchImpl?: TunnelFetch
+  /** Overall readiness budget for Named mode (default 20000 ms). */
+  readyTimeoutMs?: number
+  /** Delay between readiness probes (default 500 ms). */
+  readyPollIntervalMs?: number
 }
 
 /** Extract the Quick Tunnel URL from one cloudflared output line. */
@@ -67,16 +106,25 @@ export class TunnelManager extends EventEmitter {
   child: TunnelChild | null
   children: Set<TunnelChild>
   config: GatewayConfig
+  connectors: number | undefined
+  fetchImpl: TunnelFetch
   gatewayPort: () => number
   lastError: string
+  lastHealthyAt: number
+  lastUrlChangedAt: number
   logger: Logger
+  readyPollIntervalMs: number
+  readyTimeoutMs: number
   reconnectTimer: ReturnType<typeof setTimeout> | null
+  restarts: number
   spawnImpl: TunnelSpawn
   startPromise: Promise<TunnelStatus> | null
   startedAt: number
   state: TunnelState
   stopping: boolean
   url: string
+  #health: TunnelHealth
+  #healthTimer: ReturnType<typeof setInterval> | null
 
   constructor(options: TunnelManagerOptions) {
     super()
@@ -84,21 +132,35 @@ export class TunnelManager extends EventEmitter {
     this.logger = options.logger
     this.gatewayPort = options.gatewayPort
     this.state = this.config.tunnel.enabled ? 'stopped' : 'disabled'
+    this.#health = this.config.tunnel.enabled ? 'unknown' : 'disabled'
     this.url = ''
     this.binary = ''
     this.child = null
     this.attempts = 0
     this.startedAt = 0
     this.lastError = ''
+    this.lastHealthyAt = 0
+    this.lastUrlChangedAt = 0
+    this.restarts = 0
     this.stopping = false
     this.children = new Set()
     this.reconnectTimer = null
     this.startPromise = null
+    this.connectors = undefined
+    this.readyTimeoutMs = Math.max(0, options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS)
+    this.readyPollIntervalMs = Math.max(1, options.readyPollIntervalMs ?? DEFAULT_READY_POLL_INTERVAL_MS)
     this.spawnImpl = options.spawnImpl ?? (spawn as unknown as TunnelSpawn)
+    this.fetchImpl = options.fetchImpl ?? ((url, init) => fetch(url, init))
+    this.#healthTimer = null
   }
 
   get connected(): boolean {
     return this.state === 'connected'
+  }
+
+  /** Loopback metrics/readiness port for Named mode. */
+  metricsPort(): number {
+    return this.config.tunnel.metricsPort || this.gatewayPort() + 1000
   }
 
   /** Host names accepted from the tunnel side, for Host validation. */
@@ -131,7 +193,7 @@ export class TunnelManager extends EventEmitter {
   }
 
   status(): TunnelStatus {
-    return {
+    const status: TunnelStatus = {
       enabled: this.config.tunnel.enabled,
       mode: this.config.tunnel.mode,
       state: this.state,
@@ -144,6 +206,44 @@ export class TunnelManager extends EventEmitter {
       lastError: this.lastError,
       binary: this.binary,
       protocol: this.config.tunnel.protocol,
+      health: this.#effectiveHealth(),
+      lastHealthyAt: this.lastHealthyAt,
+      metricsPort: this.metricsPort(),
+      restarts: this.restarts,
+      lastUrlChangedAt: this.lastUrlChangedAt,
+    }
+    if (this.connectors !== undefined) status.connectors = this.connectors
+    return status
+  }
+
+  /**
+   * Live health probe.
+   *
+   * Quick mode: `connected` is healthy. Named mode: probe `/ready` on the
+   * loopback metrics port. Disabled: healthy by definition.
+   */
+  async health(): Promise<{ ok: boolean; detail: string }> {
+    if (!this.config.tunnel.enabled || this.state === 'disabled') return { ok: true, detail: 'disabled' }
+    if (this.config.tunnel.mode === 'named') return this.#checkNamedHealth()
+    if (this.state === 'connected') return { ok: true, detail: 'state=connected' }
+    return { ok: false, detail: this.lastError || `state=${this.state}` }
+  }
+
+  /** Derive the status health for Quick mode / disabled; Named uses the last probe. */
+  #effectiveHealth(): TunnelHealth {
+    if (!this.config.tunnel.enabled) return 'disabled'
+    if (this.config.tunnel.mode === 'named') return this.#health
+    switch (this.state) {
+      case 'connected':
+        return 'ok'
+      case 'reconnecting':
+      case 'error':
+      case 'degraded':
+        return 'degraded'
+      case 'disabled':
+        return 'disabled'
+      default:
+        return 'unknown'
     }
   }
 
@@ -162,7 +262,7 @@ export class TunnelManager extends EventEmitter {
       return this.status()
     }
     if (this.startPromise) return this.startPromise
-    if (this.child && (this.state === 'starting' || this.state === 'connected')) {
+    if (this.child && (this.state === 'starting' || this.state === 'connected' || this.state === 'degraded')) {
       // Idempotent: never spawn a second cloudflared for the same manager.
       return this.status()
     }
@@ -196,7 +296,10 @@ export class TunnelManager extends EventEmitter {
     const port = this.gatewayPort()
     if (this.config.tunnel.mode === 'named') {
       const token = this.config.tunnel.token || process.env.CLOUDFLARED_TUNNEL_TOKEN || ''
-      return ['tunnel', '--no-autoupdate', 'run', '--token', token]
+      // Needs verification: cloudflared's `--metrics` address also serves the
+      // local `/ready` endpoint used below. Confirm the flag position/behavior
+      // against the pinned cloudflared release before relying on it in prod.
+      return ['tunnel', '--no-autoupdate', 'run', '--token', token, '--metrics', `127.0.0.1:${this.metricsPort()}`]
     }
     return [
       'tunnel',
@@ -210,7 +313,10 @@ export class TunnelManager extends EventEmitter {
 
   async #spawn(): Promise<void> {
     const args = this.#args()
-    const redacted = args.map((arg) => (this.config.tunnel.token && arg === this.config.tunnel.token ? '[redacted]' : arg))
+    const secretToken = this.config.tunnel.token || process.env.CLOUDFLARED_TUNNEL_TOKEN || ''
+    const redacted = args.map((arg, index) =>
+      arg === secretToken || args[index - 1] === '--token' ? '[redacted]' : arg,
+    )
     this.logger.info(`Starting cloudflared ${redacted.join(' ')}`)
     const child = this.spawnImpl(this.binary, args, {
       windowsHide: true,
@@ -228,6 +334,7 @@ export class TunnelManager extends EventEmitter {
     child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
       this.children.delete(child)
       if (this.child === child) this.child = null
+      this.#stopHealthTimer()
       if (this.stopping) {
         this.#setState('stopped')
         return
@@ -235,17 +342,34 @@ export class TunnelManager extends EventEmitter {
       this.lastError = `cloudflared exited (${signal ?? code ?? 'unknown'})`
       this.url = ''
       this.startedAt = 0
+      if (this.config.tunnel.mode === 'named') this.#health = 'degraded'
       this.logger.warn(this.lastError)
       this.#scheduleReconnect()
     })
 
     if (this.config.tunnel.mode === 'named') {
       // Named tunnels have a stable hostname; there is no URL to parse.
-      await sleep(1200)
-      if (this.child && !this.url && this.config.tunnel.domain) this.url = `https://${this.config.tunnel.domain}`
-      if (this.child && this.state !== 'connected') {
-        this.#setState('connected', { startedAt: Date.now() })
+      if (this.config.tunnel.domain) this.url = `https://${this.config.tunnel.domain}`
+      const ready = await this.#waitForReady()
+      if (!this.child || this.stopping) {
+        this.#health = 'degraded'
+        this.#setState('degraded', { lastError: this.lastError || 'cloudflared exited before becoming ready' })
+        return
       }
+      if (ready) {
+        this.#health = 'ok'
+        this.lastHealthyAt = Date.now()
+        this.lastError = ''
+        this.#setState('connected', { startedAt: Date.now() })
+      } else {
+        // Degraded is a reportable state, not a startup failure: the gateway
+        // stays reachable on loopback and a later probe may still recover.
+        this.#health = 'degraded'
+        this.lastError = `cloudflared tunnel is not ready on 127.0.0.1:${this.metricsPort()}/ready after ${Math.round(this.readyTimeoutMs / 1000)}s`
+        this.#setState('degraded', { lastError: this.lastError })
+        this.logger.warn(this.lastError)
+      }
+      this.#startHealthTimer()
       return
     }
     // Quick Tunnel: wait for the URL line (or fail after ~25s).
@@ -268,12 +392,88 @@ export class TunnelManager extends EventEmitter {
   #consumeLine(line: string): void {
     this.logger.debug(`cloudflared: ${line}`)
     const url = parseQuickTunnelUrl(line)
-    if (url && (!this.url || this.state !== 'connected')) {
-      this.url = url
-      this.attempts = 0
-      this.lastError = ''
-      this.#setState('connected', { startedAt: Date.now() })
+    if (!url || (url === this.url && this.state === 'connected')) return
+    const previous = this.url
+    this.url = url
+    this.attempts = 0
+    this.lastError = ''
+    this.lastHealthyAt = Date.now()
+    if (previous && previous !== url) this.lastUrlChangedAt = Date.now()
+    this.#setState('connected', { startedAt: Date.now() })
+  }
+
+  /** Probe `http://127.0.0.1:<metricsPort>/ready` (1s per request). */
+  async #probeReady(): Promise<boolean> {
+    const url = `http://127.0.0.1:${this.metricsPort()}/ready`
+    try {
+      const response = await this.fetchImpl(url, { signal: AbortSignal.timeout(READY_REQUEST_TIMEOUT_MS) })
+      if (!response.ok) return false
+      if (typeof response.json === 'function') {
+        try {
+          const body = await response.json()
+          if (body && typeof body === 'object') {
+            // Needs verification: cloudflared's /ready payload is expected to
+            // expose the number of ready connections as `readyConnections`.
+            const readyConnections = (body as Record<string, unknown>).readyConnections
+            if (typeof readyConnections === 'number') this.connectors = readyConnections
+          }
+        } catch {
+          // The readiness body is informational only.
+        }
+      }
+      return true
+    } catch {
+      return false
     }
+  }
+
+  /** Poll `/ready` until the budget expires. Resolves false on timeout/exit. */
+  async #waitForReady(): Promise<boolean> {
+    const deadline = Date.now() + this.readyTimeoutMs
+    while (Date.now() < deadline) {
+      if (!this.child || this.stopping) return false
+      if (await this.#probeReady()) return true
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) return false
+      await sleep(Math.min(this.readyPollIntervalMs, remaining))
+    }
+    return false
+  }
+
+  /** Live Named-mode probe used by health() and the periodic timer. */
+  async #checkNamedHealth(): Promise<{ ok: boolean; detail: string }> {
+    const ready = await this.#probeReady()
+    if (ready) {
+      this.#health = 'ok'
+      this.lastHealthyAt = Date.now()
+      if (this.state !== 'connected' && this.child && !this.stopping) {
+        this.#setState('connected', { startedAt: this.startedAt || Date.now() })
+      } else {
+        this.emit('status', this.status())
+      }
+      return { ok: true, detail: 'ready' }
+    }
+    if (this.#health !== 'degraded') {
+      this.#health = 'degraded'
+      this.emit('status', this.status())
+    }
+    return { ok: false, detail: this.lastError || `not ready on 127.0.0.1:${this.metricsPort()}/ready` }
+  }
+
+  #startHealthTimer(): void {
+    if (!this.config.tunnel.enabled || this.config.tunnel.mode !== 'named') return
+    if (this.#healthTimer) return
+    const interval = Math.max(1_000, this.config.tunnel.healthIntervalMs)
+    this.#healthTimer = setInterval(() => {
+      void this.#checkNamedHealth()
+    }, interval)
+    this.#healthTimer.unref?.()
+  }
+
+  #stopHealthTimer(): void {
+    if (!this.#healthTimer) return
+    clearInterval(this.#healthTimer)
+    this.#healthTimer = null
   }
 
   #scheduleReconnect(): void {
@@ -305,6 +505,7 @@ export class TunnelManager extends EventEmitter {
 
   /** Restart the tunnel and reset the retry counter. */
   async restart(): Promise<TunnelStatus> {
+    this.restarts += 1
     await this.stop()
     this.attempts = 0
     return this.start()
@@ -313,6 +514,7 @@ export class TunnelManager extends EventEmitter {
   /** Stop the child and cancel reconnects. */
   async stop(): Promise<void> {
     this.stopping = true
+    this.#stopHealthTimer()
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
@@ -345,6 +547,8 @@ export class TunnelManager extends EventEmitter {
     }
     this.url = ''
     this.startedAt = 0
+    this.connectors = undefined
+    this.#health = this.config.tunnel.enabled ? 'unknown' : 'disabled'
     if (this.config.tunnel.enabled) this.#setState('stopped')
     else this.#setState('disabled')
   }

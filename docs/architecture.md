@@ -1,5 +1,7 @@
 # Architecture
 
+[English](./architecture.md) | [中文](./architecture.zh.md)
+
 ## Runtime topology
 
 ```
@@ -35,32 +37,34 @@ Quick Tunnel terminating at the plugin's loopback listener.
 |---|---|
 | `lib/index.js` | Cordis entry; builds services, starts the gateway, starts the tunnel in the background, registers disposers |
 | `lib/config.js` | Defaults, nested merge, validation (loopback host, named-mode token, OAuth requirement) |
-| `lib/tunnel.js` | `cloudflared` lifecycle, URL parsing, reconnect backoff, status, named-mode placeholder |
+| `lib/tunnel.js` | `cloudflared` lifecycle, URL parsing, reconnect backoff, status, Named Tunnel metrics `/ready` health |
 | `lib/cloudflared.js` | Binary resolution (config → env → PATH → cache → download), SHA-256 check, version probe |
-| `lib/pairing.js` | One-time 8-char codes, TTL, used-code tracking, automatic next code |
-| `lib/sessions.js` | HMAC-signed cookie payloads, constant-time verify, expiry |
+| `lib/pairing.js` | One-time 8-char codes, TTL, used-code tracking, automatic next code, redacted logging |
+| `lib/sessions.js` | Kid-scoped HMAC cookie payloads, multi-key verify, constant-time compare, expiry |
 | `lib/settings.js` | Persistent loopback-only admin overrides for session/pairing lifetimes (`admin-settings.json`) |
 | `lib/devices.js` | JSON registry, device limit, revoke/revoke-all, permanent deletion of revoked/expired records, silent expiry, OAuth bindings, live socket tracking |
 | `lib/util.js` | MIME types, cookie parsing/serialisation, UA fingerprints, IP/protocol helpers |
 | `lib/ratelimit.js` | Sliding-window API limiter and pairing lockout |
 | `lib/proxy.js` | DSH cookie provider (token exchange via `connection.authenticatedUrl`), HTTP proxy, WebSocket upgrade proxy, header rewrite |
-| `lib/gateway.js` | HTTP server, routing, static PWA, admin API, mobile API, device lifecycle endpoints, OAuth callback, `/mobile/ws` |
-| `lib/oauth.js` | GitHub/Gitee authorization-code flow, state HMAC, user-info fetch, bind |
+| `lib/gateway.js` | HTTP server, host/origin fences, authentication, static PWA, `/mobile/ws`, DSH proxy; dispatches to the route modules |
+| `lib/routes/*` | Declarative route modules: public, session, devices, admin (health/capabilities/audit/key rotation), weixin, oauth |
+| `lib/weixin*.js` | WeChat ClawBot/iLink channel, owner trust boundary, DSH bridge, completion notifier |
+| `lib/oauth.js` | GitHub/Gitee authorization-code flow, state HMAC, user-info fetch, allowlist, bind |
 | `lib/ws.js` | Minimal RFC 6455 server for `/mobile/ws` (text/ping/pong/close) |
-| `lib/store.js` | Atomic JSON files, AES-256-GCM secret box |
-| `lib/logger.js` | Console + ring buffer + redacted audit log |
+| `lib/store.js` | Atomic JSON files, AES-256-GCM secret box with kid-scoped multi-key storage and rotation |
+| `lib/logger.js` | Console + ring buffer + redacted audit log, asynchronous size-rotated JSONL, audit query |
 | `lib/stats.js` | Per-day/per-device request counters (`stats.json`) for the admin dashboard |
 | `lib/errors.js` | Product error codes and zh/en messages |
 
 ## Startup sequence
 
 1. Cordis loads the `gateway-mobile` row (bundle patch) after `dsh-web-app`.
-2. `normalizeConfig` validates; data dir, secret key, logger, device store initialize; persisted `admin-settings.json` overrides are applied to auth lifetimes.
-3. Pairing code is generated and logged; admin page is available on loopback **without a session**.
+2. `normalizeConfig` validates; data dir, secret key, logger, device store initialize; persisted `admin-settings.json` overrides are applied to auth lifetimes; optional DSH services (`sessionController`, `workspaceRegistry`, `userQuestions`) are probed and recorded in the capability matrix.
+3. Pairing code is generated and logged with the code redacted (`****-XY`); admin page is available on loopback **without a session**.
 4. Gateway listens on `gateway.host:gateway.port` (loopback only).
-5. If `tunnel.enabled`, `TunnelManager.start()` runs in the background: resolve/download cloudflared, spawn Quick Tunnel, parse the URL, emit `connected`.
+5. If `tunnel.enabled`, `TunnelManager.start()` runs in the background: resolve/download cloudflared, spawn Quick/Named Tunnel, parse the URL or wait for the Named metrics `/ready` probe, emit `connected`/`degraded`.
 6. The admin page shows the QR/pairing URL once the tunnel URL is known.
-7. On dispose: close gateway, stop tunnel, stop cleanup timers, destroy proxy agent.
+7. On dispose: close gateway, stop tunnel, stop cleanup timers, destroy proxy agent, flush the log queue.
 
 ## Request path
 
@@ -91,11 +95,14 @@ rewritten to the loopback authority).
 
 ```
 $DSH_HOME/gateway-mobile/
-├── secret.key       # 32 random bytes, base64; HMAC/AES key (0600)
+├── secret-keys.json # AES-256-GCM/HMAC keys with kid, active key and rotation history (0600)
+├── secret.key       # legacy single key; migrated as k1 and kept for rollback (0600)
 ├── devices.json     # device registry (atomic rewrite; revoked/expired records removable)
 ├── admin-settings.json # persisted session/pairing lifetime overrides (optional)
+├── weixin-bot.json  # encrypted WeChat credentials + owner hash (no raw user id)
+├── weixin-notify-state.json # notification policy, queue and recent pushes
 ├── stats.json       # per-day/per-device request counters
-├── gateway.log      # structured log/audit JSONL
+├── gateway.log      # structured log/audit JSONL (rotated to .1 … .N by size)
 └── cloudflared/     # cached binary when auto-download is used
 ```
 

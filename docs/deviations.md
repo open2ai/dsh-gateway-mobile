@@ -1,13 +1,15 @@
 # Deviations from `pre_docs1` (v2.0)
 
+[English](./deviations.md) | [中文](./deviations.zh.md)
+
 The implementation follows the product intent, but the source documents assume a
-different DSH generation and include API sketches that do not match DSH `0.2.1-rc.2`.
+different DSH generation and include API sketches that do not match DSH `0.2.2-rc.1`.
 This file records every material adaptation so future maintainers do not "fix" the code
 back to the document.
 
 ## Platform / plugin API
 
-| Document assumption | Reality in DSH 0.2.1-rc.2 | Implementation |
+| Document assumption | Reality in DSH 0.2.2-rc.1 | Implementation |
 |---|---|---|
 | `require('cordis')`, `exports.*`, `exports.Config`, `ctx.plugin.config` | DSH is ESM + Cordis 4; plugins export `name`, `inject`, `apply(ctx, config)` | `lib/index.js` uses ESM exports; config is the `apply` second argument |
 | `inject: { db: true, i18n: true }` | No `db`/`i18n` services in a base web profile | `inject = ['webServer', 'connection']`; no DB/i18n services |

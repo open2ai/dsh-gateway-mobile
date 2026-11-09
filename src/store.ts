@@ -120,70 +120,242 @@ export class JsonFile<T = unknown> {
   }
 }
 
+interface SecretKeyEntry {
+  key: Buffer
+  createdAt: number
+}
+
+interface SecretKeysDocument {
+  version: 2
+  active: string
+  keys: Array<{ kid: string; key: string; createdAt: number }>
+}
+
+/** Hard cap on the number of retained keys (active key never retired). */
+const MAX_SECRET_KEYS = 5
+const SECRET_KID_PATTERN = /^[A-Za-z0-9_-]+$/
+
 /**
- * AES-256-GCM helper with a key file created on first use.
+ * AES-256-GCM / HMAC helper with a rotating key set.
+ *
+ * Keys live in `secret-keys.json` (version 2). A legacy single-key
+ * `secret.key` is migrated on load: its content becomes `k1`. Ciphertexts are
+ * `v2.<kid>.<iv>.<tag>.<data>`; the older `v1.<iv>.<tag>.<data>` form is still
+ * decrypted (with every retained key) for backwards compatibility.
  */
 export class SecretBox {
+  dataDir: string
   keyFile: string
-  key: Buffer | null
+  keysFile: string
+  activeKid: string
+  keys: Map<string, SecretKeyEntry>
 
   constructor(dataDir: string) {
+    this.dataDir = dataDir
     this.keyFile = path.join(dataDir, 'secret.key')
-    this.key = null
+    this.keysFile = path.join(dataDir, 'secret-keys.json')
+    this.activeKid = ''
+    this.keys = new Map()
   }
 
-  /** Load or create the 32-byte key. */
+  /** Load the key set, migrating a legacy `secret.key` or creating one. */
   load(): this {
-    try {
-      const raw = fs.readFileSync(this.keyFile, 'utf8').trim()
-      const key = Buffer.from(raw, 'base64')
-      if (key.length !== 32) throw new Error('invalid key length')
-      this.key = key
-    } catch {
-      this.key = crypto.randomBytes(32)
-      fs.mkdirSync(path.dirname(this.keyFile), { recursive: true, mode: 0o700 })
-      fs.writeFileSync(this.keyFile, `${this.key.toString('base64')}\n`, { encoding: 'utf8', mode: 0o600 })
-      try {
-        fs.chmodSync(this.keyFile, 0o600)
-      } catch {
-        // ignore
-      }
+    const stored = this.#readKeysDocument()
+    if (stored) {
+      this.keys = stored.keys
+      this.activeKid = stored.active
+      return this
     }
+    const legacy = this.#readLegacyKey()
+    if (legacy) {
+      this.keys = new Map([['k1', { key: legacy, createdAt: Date.now() }]])
+      this.activeKid = 'k1'
+      this.#persist()
+      return this
+    }
+    this.keys = new Map([['k1', { key: crypto.randomBytes(32), createdAt: Date.now() }]])
+    this.activeKid = 'k1'
+    this.#persist()
     return this
   }
 
-  #requireKey(): Buffer {
-    if (!this.key) this.load()
-    return this.key as Buffer
+  /** Legacy accessor kept for older integrations: the active 32-byte key. */
+  get key(): Buffer {
+    return this.#entry().key
   }
 
-  /** HMAC key material for session cookies. */
-  hmac(data: string): string {
-    return crypto.createHmac('sha256', this.#requireKey()).update(data).digest('base64url')
+  /** Key ids with the active key first, then the retained older keys. */
+  keyIds(): string[] {
+    this.#ensureLoaded()
+    const ids = [...this.keys.keys()]
+    const index = ids.indexOf(this.activeKid)
+    if (index > 0) {
+      ids.splice(index, 1)
+      ids.unshift(this.activeKid)
+    }
+    return ids
   }
 
-  /** Encrypt a JSON-serializable value into a compact string. */
+  /** HMAC key material for session cookies / OAuth state. Defaults to the active key. */
+  hmac(data: string, kid?: string): string {
+    return crypto.createHmac('sha256', this.#entry(kid).key).update(data).digest('base64url')
+  }
+
+  /** Encrypt a JSON-serializable value into a compact string using the active key. */
   encrypt(value: unknown): string {
+    const entry = this.#entry()
     const iv = crypto.randomBytes(12)
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.#requireKey(), iv)
+    const cipher = crypto.createCipheriv('aes-256-gcm', entry.key, iv)
     const plaintext = Buffer.from(JSON.stringify(value), 'utf8')
     const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
     const tag = cipher.getAuthTag()
-    return ['v1', iv.toString('base64url'), tag.toString('base64url'), ciphertext.toString('base64url')].join('.')
+    return [
+      'v2',
+      entry.kid,
+      iv.toString('base64url'),
+      tag.toString('base64url'),
+      ciphertext.toString('base64url'),
+    ].join('.')
   }
 
-  /** Decrypt a value produced by encrypt(); returns null on tampering. */
+  /** Decrypt a value produced by encrypt(); returns null on tampering/unknown key. */
   decrypt<T = unknown>(payload: string): T | null {
-    try {
-      const parts = String(payload).split('.')
-      if (parts.length !== 4 || parts[0] !== 'v1') return null
+    this.#ensureLoaded()
+    const parts = String(payload ?? '').split('.')
+    if (parts[0] === 'v2') {
+      if (parts.length !== 5) return null
+      const [, kid = '', ivB64 = '', tagB64 = '', dataB64 = ''] = parts
+      const entry = this.keys.get(kid)
+      if (!entry) return null
+      const opened = this.#open<T>(entry.key, ivB64, tagB64, dataB64)
+      return opened.ok ? opened.value : null
+    }
+    if (parts[0] === 'v1') {
+      if (parts.length !== 4) return null
       const [, ivB64 = '', tagB64 = '', dataB64 = ''] = parts
-      const decipher = crypto.createDecipheriv('aes-256-gcm', this.#requireKey(), Buffer.from(ivB64, 'base64url'))
+      for (const entry of this.keys.values()) {
+        const opened = this.#open<T>(entry.key, ivB64, tagB64, dataB64)
+        if (opened.ok) return opened.value
+      }
+      return null
+    }
+    return null
+  }
+
+  /**
+   * Generate a fresh key, make it active, and retire the oldest keys beyond
+   * the retention cap. Old ciphertexts/signatures stay verifiable.
+   */
+  rotate(): { activeKid: string; keyIds: string[]; retired: number } {
+    this.#ensureLoaded()
+    const kid = this.#nextKid()
+    this.keys.set(kid, { key: crypto.randomBytes(32), createdAt: Date.now() })
+    this.activeKid = kid
+    let retired = 0
+    while (this.keys.size > MAX_SECRET_KEYS) {
+      const oldest = [...this.keys.keys()][0]
+      if (oldest === undefined || oldest === this.activeKid) break
+      this.keys.delete(oldest)
+      retired += 1
+    }
+    this.#persist()
+    return { activeKid: this.activeKid, keyIds: this.keyIds(), retired }
+  }
+
+  #ensureLoaded(): void {
+    if (this.keys.size === 0) this.load()
+  }
+
+  #entry(kid?: string): { kid: string; key: Buffer } {
+    this.#ensureLoaded()
+    const id = kid ?? this.activeKid
+    const entry = this.keys.get(id)
+    if (!entry) throw new Error(`unknown secret key id: ${id}`)
+    return { kid: id, key: entry.key }
+  }
+
+  #open<T>(key: Buffer, ivB64: string, tagB64: string, dataB64: string): { ok: true; value: T } | { ok: false } {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64url'))
       decipher.setAuthTag(Buffer.from(tagB64, 'base64url'))
       const plaintext = Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64url')), decipher.final()])
-      return JSON.parse(plaintext.toString('utf8')) as T
+      return { ok: true, value: JSON.parse(plaintext.toString('utf8')) as T }
+    } catch {
+      return { ok: false }
+    }
+  }
+
+  #readKeysDocument(): { keys: Map<string, SecretKeyEntry>; active: string } | null {
+    let raw: string
+    try {
+      raw = fs.readFileSync(this.keysFile, 'utf8')
     } catch {
       return null
+    }
+    try {
+      const doc = JSON.parse(raw) as Partial<SecretKeysDocument>
+      if (!doc || doc.version !== 2 || typeof doc.active !== 'string' || !Array.isArray(doc.keys)) return null
+      const keys = new Map<string, SecretKeyEntry>()
+      for (const item of doc.keys) {
+        if (!item || typeof item.kid !== 'string' || !SECRET_KID_PATTERN.test(item.kid) || typeof item.key !== 'string') continue
+        const key = Buffer.from(item.key, 'base64')
+        if (key.length !== 32) continue
+        keys.set(item.kid, { key, createdAt: Number(item.createdAt) || Date.now() })
+      }
+      if (keys.size === 0) return null
+      const active = keys.has(doc.active) ? doc.active : (keys.keys().next().value as string)
+      return { keys, active }
+    } catch {
+      return null
+    }
+  }
+
+  #readLegacyKey(): Buffer | null {
+    try {
+      const raw = fs.readFileSync(this.keyFile, 'utf8').trim()
+      const key = Buffer.from(raw, 'base64')
+      return key.length === 32 ? key : null
+    } catch {
+      return null
+    }
+  }
+
+  #nextKid(): string {
+    let max = 0
+    for (const kid of this.keys.keys()) {
+      const match = /^k(\d+)$/.exec(kid)
+      if (match?.[1]) max = Math.max(max, Number(match[1]))
+    }
+    return `k${max + 1}`
+  }
+
+  #persist(): void {
+    const doc: SecretKeysDocument = {
+      version: 2,
+      active: this.activeKid,
+      keys: [...this.keys].map(([kid, entry]) => ({
+        kid,
+        key: entry.key.toString('base64'),
+        createdAt: entry.createdAt,
+      })),
+    }
+    fs.mkdirSync(this.dataDir, { recursive: true, mode: 0o700 })
+    const temp = `${this.keysFile}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`
+    fs.writeFileSync(temp, `${JSON.stringify(doc, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+    try {
+      fs.renameSync(temp, this.keysFile)
+    } catch {
+      try {
+        fs.rmSync(this.keysFile, { force: true })
+      } catch {
+        // ignore
+      }
+      fs.renameSync(temp, this.keysFile)
+    }
+    try {
+      fs.chmodSync(this.keysFile, 0o600)
+    } catch {
+      // Windows may not support POSIX modes; ACLs are the platform's job.
     }
   }
 }

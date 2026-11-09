@@ -1,4 +1,4 @@
-import { $, api, ApiError, applyI18n, initTheme, t } from './common'
+import { $, api, ApiError, applyI18n, connectionState, initTheme, onConnectionChange, t } from './common'
 
 initTheme()
 applyI18n()
@@ -10,6 +10,11 @@ interface StatusPayload {
 const status = $('#status')
 const frame = $<HTMLIFrameElement>('#frame')
 const loading = $('#loading')
+const spinner = $('#shell-spinner')
+const timeoutPanel = $('#shell-timeout')
+const retryButton = $<HTMLButtonElement>('#shell-retry')
+
+let loadTimer: ReturnType<typeof setTimeout> | undefined
 
 function setStatus(text: string, ok: boolean): void {
   if (!status) return
@@ -18,12 +23,43 @@ function setStatus(text: string, ok: boolean): void {
   status.classList.toggle('bad', !ok)
 }
 
+function clearLoadTimer(): void {
+  if (loadTimer !== undefined) {
+    clearTimeout(loadTimer)
+    loadTimer = undefined
+  }
+}
+
 function hideLoading(): void {
+  clearLoadTimer()
   if (loading) loading.hidden = true
 }
 
+/** After the iframe timeout, keep the overlay up but offer retry / diagnostics. */
+function showTimeout(): void {
+  if (!loading || loading.hidden) return
+  if (spinner) spinner.hidden = true
+  const label = loading.querySelector<HTMLElement>('[data-i18n="loading"]')
+  if (label) label.hidden = true
+  if (timeoutPanel) timeoutPanel.hidden = false
+}
+
+function restartLoad(): void {
+  if (!frame) return
+  clearLoadTimer()
+  if (loading) loading.hidden = false
+  if (spinner) spinner.hidden = false
+  const label = loading?.querySelector<HTMLElement>('[data-i18n="loading"]')
+  if (label) label.hidden = false
+  if (timeoutPanel) timeoutPanel.hidden = true
+  setStatus(t('loading'), false)
+  frame.src = `/?_=${Date.now()}`
+  loadTimer = setTimeout(showTimeout, 12_000)
+}
+
 frame?.addEventListener('load', hideLoading)
-window.setTimeout(hideLoading, 12_000)
+retryButton?.addEventListener('click', restartLoad)
+loadTimer = setTimeout(showTimeout, 12_000)
 
 async function check(): Promise<void> {
   try {
@@ -35,9 +71,13 @@ async function check(): Promise<void> {
       location.replace('/mobile/pair?next=/mobile/shell')
       return
     }
-    setStatus(t('disconnected'), false)
+    setStatus(connectionState() === 'offline' ? t('syncOffline') : t('disconnected'), false)
   }
 }
+
+onConnectionChange((state) => {
+  if (state === 'offline') setStatus(t('syncOffline'), false)
+})
 
 void check()
 setInterval(check, 15_000)

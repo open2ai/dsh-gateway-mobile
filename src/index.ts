@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url'
 import { normalizeConfig } from './config.js'
 import { DeviceManager } from './devices.js'
 import { Gateway } from './gateway.js'
+import type { CapabilityMatrix } from './gateway.js'
 import { Logger } from './logger.js'
 import { OAuthManager } from './oauth.js'
 import { PairingManager } from './pairing.js'
@@ -30,7 +31,8 @@ import type { SessionControllerLike, WeixinApprovalOutcome } from './weixin-brid
 import { errorMessage } from './util.js'
 
 export const name = 'dsh-gateway-mobile'
-export const inject = ['webServer', 'connection', 'sessionController', 'workspaceRegistry']
+/** Only the two services the gateway itself cannot run without. */
+export const inject = ['webServer', 'connection']
 
 const packageJson = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')) as { version: string }
 export const version: string = packageJson.version
@@ -42,6 +44,8 @@ export interface CordisContext {
   connection: {
     authenticatedUrl(origin: string): Promise<string> | string
   }
+  /** Cordis reflection accessor; used to probe optional services without requiring them. */
+  get?<T = unknown>(name: string, strict?: boolean): T | undefined
   sessionController?: SessionControllerLike
   workspaceRegistry?: {
     list(): Array<{
@@ -64,6 +68,24 @@ export interface CordisContext {
   effect(callback: () => () => void | Promise<void>, label?: string): unknown
 }
 
+function optionalService<T>(ctx: CordisContext, name: string): T | undefined {
+  // `ctx.get` is the only failure-safe accessor: reading an undeclared property
+  // off the Cordis proxy throws "cannot get property ... without inject".
+  if (typeof ctx.get === 'function') {
+    try {
+      const value = ctx.get<T>(name)
+      if (value !== undefined && value !== null) return value
+    } catch {
+      // A missing service must degrade, not abort plugin startup.
+    }
+  }
+  try {
+    return (ctx as unknown as Record<string, unknown>)[name] as T | undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Cordis entry. The profile row supplies the config from cordis.patch.yml.
  */
@@ -75,6 +97,8 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
   const logger = new Logger({
     level: config.log.level,
     maxEntries: config.log.maxEntries,
+    maxBytes: config.log.maxBytes,
+    maxFiles: config.log.maxFiles,
     file: `${config.dataDir}/gateway.log`,
   })
   logger.info(`Starting dsh-gateway-mobile ${version}`)
@@ -82,8 +106,23 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
   const settingsStore = new SettingsStore({ dataDir: config.dataDir, logger })
   settingsStore.load()
   settingsStore.applyToConfig(config)
+  // The logger was built before stored overrides were applied; align its level.
+  logger.setLevel(config.log.level)
 
   const box = new SecretBox(config.dataDir).load()
+  const sessionControllerCandidate: unknown = optionalService(ctx, 'sessionController')
+  const sessionController = isSessionController(sessionControllerCandidate) ? sessionControllerCandidate : undefined
+  const workspaceRegistryCandidate: unknown = optionalService(ctx, 'workspaceRegistry')
+  const workspaceRegistry = isWorkspaceRegistry(workspaceRegistryCandidate) ? workspaceRegistryCandidate : undefined
+  const userQuestionsCandidate: unknown = optionalService(ctx, 'userQuestions')
+  const userQuestions = isUserQuestions(userQuestionsCandidate) ? userQuestionsCandidate : undefined
+  const capabilities: CapabilityMatrix = {
+    controller: Boolean(sessionController),
+    workspaceRegistry: Boolean(workspaceRegistry),
+    userQuestions: Boolean(userQuestions),
+    weixin: true,
+    tunnel: { enabled: config.tunnel.enabled, mode: config.tunnel.mode },
+  }
   const devices = new DeviceManager({
     dataDir: config.dataDir,
     maxDevices: config.device.maxDevicesPerUser,
@@ -124,7 +163,7 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
     box,
   })
   const latestWorkspace = () => {
-    const workspaces = ctx.workspaceRegistry?.list() ?? []
+    const workspaces = workspaceRegistry?.list() ?? []
     if (workspaces.length === 0) return undefined
     return [...workspaces]
       .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))[0]
@@ -136,7 +175,7 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
   }
   const weixinBridge = new WeixinBridge({
     channel: weixin,
-    controller: isSessionController(ctx.sessionController) ? ctx.sessionController : undefined,
+    controller: sessionController,
     events: ctx,
     logger,
     dataDir: config.dataDir,
@@ -145,7 +184,7 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
     ensureWorkspace: workspaceSession,
     approvalMaxPerHour: config.weixin.approval.maxPerHour,
     lateAnswer: (agent, callId, answer) => {
-      const service = ctx.userQuestions
+      const service = userQuestions
       if (!service) return false
       try {
         const result = service.answer(agent, callId, answer)
@@ -157,7 +196,7 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
   })
   const weixinNotifier = new WeixinNotifier({
     channel: weixin,
-    controller: isSessionController(ctx.sessionController) ? ctx.sessionController : undefined,
+    controller: sessionController,
     config: config.weixin.notify,
     logger,
     dataDir: config.dataDir,
@@ -178,6 +217,9 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
     weixinApprovalHistory: () => weixinBridge.approvalHistorySnapshot(),
     stats,
     settingsStore,
+    secretBox: box,
+    upstreamOrigin: () => ctx.webServer.getOrigin(),
+    capabilities,
     version,
   })
 
@@ -190,14 +232,18 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
   }
 
   logger.info(`Admin console: ${gateway.origin}/admin`)
-  logger.info(`Pairing code: ${pairing.describe().formatted} (valid ${config.auth.pairingTokenExpiry}s)`)
-  void weixinBridge
-    .start()
-    .then(async () => {
-      await weixin.start()
-      await weixinNotifier.start()
-    })
-    .catch((error: unknown) => logger.warn(`WeChat channel start failed: ${errorMessage(error)}`))
+  logger.info(`Pairing code: ${maskPairingCode(pairing.describe().formatted)} (valid ${config.auth.pairingTokenExpiry}s)`)
+  if (config.weixin.enabled) {
+    void weixinBridge
+      .start()
+      .then(async () => {
+        await weixin.start()
+        await weixinNotifier.start()
+      })
+      .catch((error: unknown) => logger.warn(`WeChat channel start failed: ${errorMessage(error)}`))
+  } else {
+    logger.info('WeChat channel disabled by configuration')
+  }
 
   if (config.tunnel.enabled) {
     void tunnel
@@ -209,7 +255,7 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
           logger.info(`Pair on your phone: ${status.url}/mobile/pair`)
           logger.info(`Admin (local): ${gateway.origin}/admin`)
           const next = pairing.describe()
-          logger.info(`Pairing code: ${next.formatted}`)
+          logger.info(`Pairing code: ${maskPairingCode(next.formatted)}`)
         }
       })
       .catch((error: unknown) => {
@@ -223,20 +269,49 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
   ctx.effect(
     () => async () => {
       logger.info('Disposing dsh-gateway-mobile')
-      weixinNotifier.stop()
-      weixinBridge.stop()
-      weixin.stop()
-      devices.stopCleanup()
-      proxy.close()
+      // Every stop step is isolated so one failure cannot skip the HTTP
+      // listener release (a leaked listener causes EADDRINUSE on reload).
+      const safe = (label: string, fn: () => void): void => {
+        try {
+          fn()
+        } catch (error) {
+          logger.warn(`Dispose step "${label}" failed: ${errorMessage(error)}`)
+        }
+      }
+      safe('weixin-notifier', () => weixinNotifier.stop())
+      safe('weixin-bridge', () => weixinBridge.stop())
+      safe('weixin', () => weixin.stop())
+      safe('device-cleanup', () => devices.stopCleanup())
+      safe('proxy', () => proxy.close())
       await Promise.allSettled([
         gateway.close(),
         tunnel.stop(),
         devices.flush(),
         stats.flush(),
       ])
+      await logger.flush()
     },
     'dsh-gateway-mobile lifecycle',
   )
+}
+
+type WorkspaceRegistryLike = NonNullable<CordisContext['workspaceRegistry']>
+type UserQuestionsLike = NonNullable<CordisContext['userQuestions']>
+
+function isWorkspaceRegistry(value: unknown): value is WorkspaceRegistryLike {
+  if (!value || typeof value !== 'object') return false
+  return typeof (value as { list?: unknown }).list === 'function'
+}
+
+function isUserQuestions(value: unknown): value is UserQuestionsLike {
+  if (!value || typeof value !== 'object') return false
+  return typeof (value as { answer?: unknown }).answer === 'function'
+}
+
+/** Never print a complete pairing code to the console or the log file. */
+function maskPairingCode(formatted: string): string {
+  const compact = formatted.replace(/[^A-Za-z0-9]/g, '')
+  return `****-${compact.slice(-2)}`
 }
 
 function isSessionController(value: unknown): value is SessionControllerLike {

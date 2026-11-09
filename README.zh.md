@@ -4,11 +4,11 @@
 
 一个 DSH Host 插件：通过出站 **Cloudflare Quick Tunnel** 访问本机 `dsh web` 会话，支持手机一次性配对，也可选接入 **微信 ClawBot/iLink**。DSH 始终监听回环地址；插件运行自己的回环网关（默认 `127.0.0.1:3081`），不会把 DSH 的 Cookie 暴露出去。
 
-状态：**v0.1.3**。Quick Tunnel 是 Cloudflare 的测试/开发设施。
+状态：**v0.1.4**。Quick Tunnel 是 Cloudflare 的测试/开发设施。
 
 ## 快速开始
 
-需要 DSH `0.2.2-rc.1`、Node 22+ 和 cloudflared（支持自动下载）。
+需要 DSH `0.2.2-rc.1`、Node 24+ 和 cloudflared（支持自动下载）。
 
 ```powershell
 npm install
@@ -35,13 +35,29 @@ dsh --profile web --no-open
 ## 功能
 
 - Quick Tunnel（HTTP/2）生命周期：重连、启动/停止/重启、状态
+- Named Tunnel 连接器健康检查（metrics `/ready`），异常时标记 degraded
 - 一次性配对码、每设备 HMAC 会话、滑动续期
 - 设备列表：重命名、撤销、清理、静默过期
-- 微信文本/图片对话桥接到专用 DSH 会话
+- 微信文本/图片对话桥接到专用 DSH 会话，默认只接受绑定 owner 的消息
 - 微信审批、提问、计划审核、timed 提问迟到回答
 - 跨会话完成通知：合并窗口、冷却、全局间隔、每小时上限
-- 管理后台：概览、配对、微信、设备、日志、设置
+- 管理后台：概览（状态 chips + KPI/快捷操作/7 天图）、配对、微信、设备、日志、设置、帮助（含诊断）
+- `/health?deep=1` 分项健康、审计导出、密钥轮换、能力矩阵
+- `npm run doctor` 环境自检，`npm run hmr-check` 热重载冒烟
 - 手机端打开官方 DSH Web UI
+
+## 文档
+
+完整文档目录见 [docs/README.zh.md](./docs/README.zh.md)（中英双语）。常用入口：
+
+- [架构](./docs/architecture.zh.md) · [架构流程](./docs/architecture-flow.zh.md)
+- [API](./docs/api.zh.md) · [配置](./docs/configuration.zh.md) · [安全说明](./docs/security.zh.md)
+- [管理后台](./docs/admin-console.zh.md) · [手机端工作区](./docs/mobile-workspace.zh.md)
+- [开发](./docs/development.zh.md) · [已知限制](./docs/limitations.zh.md) · [偏差记录](./docs/deviations.zh.md)
+
+## 路线图
+
+下一版方向、优先级和待验证项见 [docs/roadmap.zh.md](./docs/roadmap.zh.md)。
 
 ## 许可证
 

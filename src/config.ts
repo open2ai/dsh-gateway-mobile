@@ -29,12 +29,18 @@ export interface GatewayConfig {
     protocol: string
     maxRetries: number
     token: string
+    /** Loopback metrics port for Named Tunnel health checks; 0 derives gateway.port + 1000. */
+    metricsPort: number
+    /** How often a Named Tunnel connector is health-checked. */
+    healthIntervalMs: number
   }
   auth: {
     pairingTokenExpiry: number
     sessionMaxAge: number
     requireOAuth: boolean
     oauthProviders: string[]
+    /** When non-empty, only these `provider:loginOrId` identities may bind. */
+    oauthAllowedUsers: string[]
     githubClientId: string
     githubClientSecret: string
     giteeClientId: string
@@ -63,6 +69,10 @@ export interface GatewayConfig {
   log: {
     level: string
     maxEntries: number
+    /** Rotate the JSONL log file once it exceeds this many bytes. */
+    maxBytes: number
+    /** Keep this many rotated log files (`.1` .. `.N`). */
+    maxFiles: number
   }
 }
 
@@ -73,6 +83,10 @@ export interface WeixinConfig {
   routeTag: string
   channelVersion: string
   requireApproval: boolean
+  /** Accept messages from accounts other than the bot owner (default false). */
+  allowOtherUsers: boolean
+  /** When non-empty, these hashed user IDs may also talk to the bot. */
+  allowedUsers: string[]
   notify: WeixinNotifyConfig
   approval: WeixinApprovalConfig
 }
@@ -115,12 +129,15 @@ const DEFAULTS = {
     maxRetries: 10,
     /** Used only when mode === 'named'. Prefer the env var to avoid writing it to disk. */
     token: '',
+    metricsPort: 0,
+    healthIntervalMs: 15000,
   },
   auth: {
     pairingTokenExpiry: 900,
     sessionMaxAge: 86400,
     requireOAuth: false,
     oauthProviders: ['github'],
+    oauthAllowedUsers: [],
     githubClientId: '',
     githubClientSecret: '',
     giteeClientId: '',
@@ -153,6 +170,8 @@ const DEFAULTS = {
     routeTag: '',
     channelVersion: '1.0.0',
     requireApproval: true,
+    allowOtherUsers: false,
+    allowedUsers: [],
     notify: {
       enabled: true,
       debounceMs: 5000,
@@ -167,6 +186,8 @@ const DEFAULTS = {
   log: {
     level: 'info',
     maxEntries: 100,
+    maxBytes: 5 * 1024 * 1024,
+    maxFiles: 3,
   },
 } satisfies GatewayConfig
 
@@ -259,12 +280,15 @@ export function normalizeConfig(raw?: unknown, runtime: RuntimeEnv = {}): Gatewa
       protocol: requireString('tunnel.protocol', merged.tunnel.protocol),
       maxRetries: requireInt('tunnel.maxRetries', merged.tunnel.maxRetries, 0, 100),
       token: requireString('tunnel.token', merged.tunnel.token, { allowEmpty: true }),
+      metricsPort: requireInt('tunnel.metricsPort', merged.tunnel.metricsPort, 0, 65535),
+      healthIntervalMs: requireInt('tunnel.healthIntervalMs', merged.tunnel.healthIntervalMs, 5000, 300000),
     },
     auth: {
       pairingTokenExpiry: requireInt('auth.pairingTokenExpiry', merged.auth.pairingTokenExpiry, 30, 86400),
       sessionMaxAge: requireInt('auth.sessionMaxAge', merged.auth.sessionMaxAge, 300, 90 * 86400),
       requireOAuth: requireBoolean('auth.requireOAuth', merged.auth.requireOAuth),
       oauthProviders: requireStringArray('auth.oauthProviders', merged.auth.oauthProviders),
+      oauthAllowedUsers: requireStringArray('auth.oauthAllowedUsers', merged.auth.oauthAllowedUsers),
       githubClientId: requireString('auth.githubClientId', merged.auth.githubClientId, { allowEmpty: true }),
       githubClientSecret: requireString('auth.githubClientSecret', merged.auth.githubClientSecret, { allowEmpty: true }),
       giteeClientId: requireString('auth.giteeClientId', merged.auth.giteeClientId, { allowEmpty: true }),
@@ -296,6 +320,8 @@ export function normalizeConfig(raw?: unknown, runtime: RuntimeEnv = {}): Gatewa
       routeTag: requireString('weixin.routeTag', merged.weixin.routeTag, { allowEmpty: true }),
       channelVersion: requireString('weixin.channelVersion', merged.weixin.channelVersion),
       requireApproval: requireBoolean('weixin.requireApproval', merged.weixin.requireApproval),
+      allowOtherUsers: requireBoolean('weixin.allowOtherUsers', merged.weixin.allowOtherUsers),
+      allowedUsers: requireStringArray('weixin.allowedUsers', merged.weixin.allowedUsers),
       notify: {
         enabled: requireBoolean('weixin.notify.enabled', merged.weixin.notify.enabled),
         debounceMs: requireInt('weixin.notify.debounceMs', merged.weixin.notify.debounceMs, 3000, 30000),
@@ -310,6 +336,8 @@ export function normalizeConfig(raw?: unknown, runtime: RuntimeEnv = {}): Gatewa
     log: {
       level: requireString('log.level', merged.log.level),
       maxEntries: requireInt('log.maxEntries', merged.log.maxEntries, 10, 10000),
+      maxBytes: requireInt('log.maxBytes', merged.log.maxBytes, 64 * 1024, 1024 * 1024 * 1024),
+      maxFiles: requireInt('log.maxFiles', merged.log.maxFiles, 1, 20),
     },
   }
 
@@ -339,6 +367,13 @@ export function normalizeConfig(raw?: unknown, runtime: RuntimeEnv = {}): Gatewa
   }
   for (const provider of cfg.auth.oauthProviders) {
     if (!['github', 'gitee'].includes(provider)) fail('auth.oauthProviders', 'only "github" and "gitee" are supported', provider)
+  }
+  for (const entry of cfg.auth.oauthAllowedUsers) {
+    const match = /^(github|gitee):(.+)$/i.exec(entry.trim())
+    if (!match || !match[2]) fail('auth.oauthAllowedUsers', 'entries must look like "github:login" or "gitee:login"', entry)
+  }
+  for (const entry of cfg.weixin.allowedUsers) {
+    if (!entry.trim()) fail('weixin.allowedUsers', 'entries must not be empty', entry)
   }
 
   cfg.dataDir = merged.dataDir

@@ -17,6 +17,7 @@ import { OAuthManager } from '../lib/oauth.js'
 import { PairingManager } from '../lib/pairing.js'
 import { DshCookieProvider, ProxyEngine } from '../lib/proxy.js'
 import { SessionManager } from '../lib/sessions.js'
+import { SettingsStore } from '../lib/settings.js'
 import { SecretBox } from '../lib/store.js'
 import { StatsStore } from '../lib/stats.js'
 import { TunnelManager } from '../lib/tunnel.js'
@@ -140,6 +141,8 @@ export async function createGateway(input) {
   const pairing = new PairingManager({ ttlSeconds: config.auth.pairingTokenExpiry, logger })
   const sessions = new SessionManager({ box, maxAgeSeconds: config.auth.sessionMaxAge })
   const stats = new StatsStore({ dataDir })
+  const settingsStore = new SettingsStore({ dataDir, logger })
+  settingsStore.load()
   const tunnel = new TunnelManager({ config, logger, gatewayPort: () => gateway.port })
   const cookieProvider = new DshCookieProvider({ ctx: fakeContext(input.upstreamOrigin), logger })
   const proxy = new ProxyEngine({
@@ -168,6 +171,9 @@ export async function createGateway(input) {
     proxy,
     oauth,
     stats,
+    settingsStore,
+    secretBox: box,
+    upstreamOrigin: () => input.upstreamOrigin,
     version: 'test',
   })
   await gateway.listen()
@@ -183,6 +189,7 @@ export async function createGateway(input) {
     proxy,
     oauth,
     dataDir,
+    settingsStore,
     async close() {
       devices.stopCleanup()
       await gateway.close()

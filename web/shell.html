@@ -20,8 +20,15 @@
     </button>
   </header>
   <div class="shell-loading" id="loading">
-    <div class="shell-spinner"></div>
+    <div class="shell-spinner" id="shell-spinner"></div>
     <span data-i18n="loading">加载中…</span>
+    <div class="shell-timeout" id="shell-timeout" hidden>
+      <p class="shell-timeout-text" data-i18n="shellTimeout">加载超时，可能是网络问题或 DSH 尚未就绪</p>
+      <div class="shell-timeout-actions">
+        <button class="btn small" id="shell-retry" type="button" data-i18n="retry">重试</button>
+        <a class="btn small secondary" href="/mobile/diag" data-i18n="diagTitle">连接诊断</a>
+      </div>
+    </div>
   </div>
   <iframe id="frame" class="shell-frame" src="/" title="DSH Web UI"
           allow="microphone; clipboard-read; clipboard-write; camera"></iframe>

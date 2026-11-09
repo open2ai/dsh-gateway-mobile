@@ -4,11 +4,11 @@
 
 A DSH host plugin that exposes your local `dsh web` session through an outbound **Cloudflare Quick Tunnel**, with one-time phone pairing and an optional **WeChat ClawBot/iLink** connection. DSH keeps listening on loopback; the plugin runs its own loopback gateway (default `127.0.0.1:3081`) and never exposes DSH's cookie.
 
-Status: **v0.1.3**. Quick Tunnel is a Cloudflare testing/development facility.
+Status: **v0.1.4**. Quick Tunnel is a Cloudflare testing/development facility.
 
 ## Quick start
 
-Requires DSH `0.2.2-rc.1`, Node 22+, and cloudflared (auto-download fallback).
+Requires DSH `0.2.2-rc.1`, Node 24+, and cloudflared (auto-download fallback).
 
 ```powershell
 npm install
@@ -35,13 +35,30 @@ WeChat handles an approval or question only while it has a valid inbound context
 ## What it does
 
 - Quick Tunnel lifecycle (HTTP/2) with reconnect, start/stop/restart, and status
+- Named Tunnel connector health via the metrics `/ready` endpoint (degraded instead of a false "connected")
 - One-time pairing codes, per-device HMAC sessions, sliding renewal
 - Device list with rename, revoke, cleanup, and silent expiry
-- WeChat text/image chat bridged to a dedicated DSH session
+- WeChat text/image chat bridged to a dedicated DSH session, owner-only by default
 - WeChat approvals, questions, plan review, and timed-question late answers
 - Cross-session completion notifications with merge/cooldown/rate limits
-- Admin console: overview, pairing, WeChat, devices, logs, settings
+- Admin console: overview (status chips + KPI/quick actions/7-day chart), pairing, WeChat, devices, logs, settings, help with diagnostics
+- `/health?deep=1` readiness, filtered audit export, key rotation, and a capability matrix
+- `npm run doctor` environment check and `npm run hmr-check` reload smoke test
 - Mobile opens the official DSH Web UI
+
+## Documentation
+
+The full documentation index is [docs/README.md](./docs/README.md) (English and Chinese).
+Frequently used guides:
+
+- [Architecture](./docs/architecture.md) · [Architecture flows](./docs/architecture-flow.md)
+- [API](./docs/api.md) · [Configuration](./docs/configuration.md) · [Security](./docs/security.md)
+- [Admin console](./docs/admin-console.md) · [Mobile workspace](./docs/mobile-workspace.md)
+- [Development](./docs/development.md) · [Known limitations](./docs/limitations.md) · [Deviations](./docs/deviations.md)
+
+## Roadmap
+
+Next steps, priorities, and open questions are in [docs/roadmap.md](./docs/roadmap.md).
 
 ## License
 

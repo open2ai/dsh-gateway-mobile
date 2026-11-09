@@ -20,7 +20,19 @@ const stage = path.join(dist, 'dsh-gateway-mobile')
 await fsp.rm(dist, { recursive: true, force: true })
 await fsp.mkdir(stage, { recursive: true })
 
-const entries = ['package.json', 'cordis.patch.yml', 'README.md', 'README.zh.md', 'CHANGELOG.md', 'CHANGELOG.zh.md', 'LICENSE', 'lib', 'web', 'docs']
+// The distributable contents must match `npm pack`: derive them from
+// package.json.files instead of hardcoding a list (previously this copied the
+// whole docs/ directory while npm only shipped docs/DETAIL.*). package.json,
+// README and LICENSE are always included by npm even when not listed.
+const entries = [
+  ...new Set([
+    ...(Array.isArray(pkg.files) ? pkg.files : []),
+    'package.json',
+    'README.md',
+    'README.zh.md',
+    'LICENSE',
+  ]),
+]
 for (const entry of entries) {
   const source = path.join(root, entry)
   if (!fs.existsSync(source)) continue

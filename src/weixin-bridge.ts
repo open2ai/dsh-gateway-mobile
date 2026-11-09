@@ -151,6 +151,10 @@ const APPROVAL_TIMEOUT_MS = 120_000
 const QUESTION_TIMEOUT_MS = 300_000
 const LATE_QUESTION_EXPIRY_MS = 30 * 60_000
 const APPROVAL_ID_LENGTH = 4
+/** How many inbound message ids to remember for duplicate suppression. */
+const MESSAGE_ID_CACHE_SIZE = 200
+/** A bare approve/deny/option reply when nothing is waiting is almost certainly misfired. */
+const BARE_REPLY_PATTERN = /^(y|n|yes|no|是|否|允许|拒绝|\d+(?:,\d+)*)$/i
 
 interface SessionFile {
   version: 1
@@ -173,6 +177,9 @@ export class WeixinBridge {
     | undefined
   private readonly approvalHistory: WeixinApprovalHistoryEntry[] = []
   private readonly approvalSentTimes: number[] = []
+  /** LRU of recently handled inbound message ids (oldest first). */
+  private readonly recentMessageIds = new Set<number>()
+  private readonly recentMessageQueue: number[] = []
   private sessionId = ''
   private lastUserId = ''
   private queue: Promise<void> = Promise.resolve()
@@ -200,10 +207,12 @@ export class WeixinBridge {
   async start(): Promise<void> {
     await this.loadApprovalHistory()
     this.channel.onMessage = (message) => {
+      if (this.isDuplicateMessage(message)) return
       // Approval replies must bypass the turn queue; the queued DSH turn is blocked
       // waiting for this decision.
       if (this.handleApprovalReply(message)) return
       if (this.handleQuestionReply(message)) return
+      if (this.rejectBareReply(message)) return
       this.enqueue(message)
     }
     this.channel.onCredentialsChanged = () => {
@@ -263,6 +272,33 @@ export class WeixinBridge {
     this.sessionId = ''
     await fsp.rm(this.file, { force: true })
     this.logger.info('WeChat DSH session reset; next message creates a new session')
+  }
+
+  /** Drop a message whose `message_id` was already handled (weixin may redeliver). */
+  private isDuplicateMessage(message: WeixinInbound): boolean {
+    const id = message.messageId
+    if (typeof id !== 'number') return false
+    if (this.recentMessageIds.has(id)) return true
+    this.recentMessageIds.add(id)
+    this.recentMessageQueue.push(id)
+    while (this.recentMessageQueue.length > MESSAGE_ID_CACHE_SIZE) {
+      const oldest = this.recentMessageQueue.shift()
+      if (oldest !== undefined) this.recentMessageIds.delete(oldest)
+    }
+    return false
+  }
+
+  /**
+   * A bare Y/N/number reply with nothing pending is a misfire (usually an old
+   * approval prompt); answer once instead of forwarding it as a prompt.
+   */
+  private rejectBareReply(message: WeixinInbound): boolean {
+    if (this.pendingApproval || this.pendingQuestion) return false
+    if (!BARE_REPLY_PATTERN.test(message.text.trim())) return false
+    void this.channel
+      .sendText(message.userId, '当前没有待处理的审批或提问。', message.contextToken)
+      .catch(() => {})
+    return true
   }
 
   private enqueue(message: WeixinInbound): void {
