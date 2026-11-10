@@ -392,7 +392,6 @@ function OverviewTab(props: {
           tone={online ? 'gwmb-ok' : ping ? 'gwmb-warn' : 'gwmb-muted'}
         >
           <div className="gwmb-meta">{ping ? `${ping.tunnel.mode} · ${ping.tunnel.protocol}` : '—'}</div>
-          {ping?.tunnel.url ? <div className="gwmb-meta gwmb-code">{ping.tunnel.url}</div> : null}
           {props.local ? (
             <div className="gwmb-actions">
               <button
