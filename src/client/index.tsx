@@ -168,6 +168,8 @@ const STYLE = `
 .gwmb-btn:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
 .gwmb-btn:disabled { opacity: .5; cursor: default; }
 .gwmb-btn-sm { padding: 3px 8px; font-size: 12px; }
+.gwmb-tunnel-actions { flex-wrap: nowrap; width: 100%; }
+.gwmb-tunnel-actions .gwmb-btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; font-size: 12px; white-space: nowrap; }
 .gwmb-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--dsw-alias-border-l1); padding-bottom: 6px; }
 .gwmb-tab { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 14px; padding: 7px 12px; border-radius: var(--dsw-radius-md, 10px); cursor: pointer; }
 .gwmb-tab:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -402,7 +404,7 @@ function OverviewTab(props: {
         >
           <div className="gwmb-meta">{ping ? `${ping.tunnel.mode} · ${ping.tunnel.protocol}` : '—'}</div>
           {props.local ? (
-            <div className="gwmb-actions">
+            <div className="gwmb-actions gwmb-tunnel-actions">
               <button
                 className="gwmb-btn"
                 type="button"
