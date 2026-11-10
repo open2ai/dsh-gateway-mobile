@@ -336,6 +336,13 @@ const STYLE = `
 .gwmb-card { gap: 10px; }
 .gwmb-row { gap: 10px; }
 .gwmb-note { line-height: 1.6; }
+.gwmb-switch-row { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.gwmb-switch { position: relative; width: 36px; height: 20px; flex: 0 0 auto; padding: 0; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+.gwmb-switch-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); transition: transform .15s ease, background-color .15s ease; }
+.gwmb-switch-on { background: var(--dsw-alias-button-primary-fill); border-color: transparent; }
+.gwmb-switch-on .gwmb-switch-knob { transform: translateX(16px); background: var(--dsw-alias-label-primary-foreground); }
+.gwmb-switch:disabled { opacity: .45; cursor: default; }
+.gwmb-switch:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 2px; }
 `
 
 // Insert the stylesheet while the module factory is materializing: the client
@@ -467,8 +474,23 @@ function Modal(props: { title: string; children: ReactNode; actions: ReactNode; 
   )
 }
 
-function ConfirmDialog(props: { state: ConfirmState; busy?: boolean; onClose: () => void }): ReactElement {
-  const { state } = props
+function Toggle(props: { checked: boolean; disabled?: boolean; label?: string; onChange: (value: boolean) => void }): ReactElement {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.checked}
+      aria-label={props.label}
+      className={`gwmb-switch ${props.checked ? 'gwmb-switch-on' : ''}`}
+      disabled={props.disabled === true}
+      onClick={() => props.onChange(!props.checked)}
+    >
+      <span className="gwmb-switch-knob" />
+    </button>
+  )
+}
+
+function ConfirmDialog(props: { state: ConfirmState; busy?: boolean; onClose: () => void }): ReactElement {  const { state } = props
   return (
     <Modal
       title={state.title}
@@ -994,17 +1016,18 @@ function PairingTab(): ReactElement {
         <h3>隧道与配对设置</h3>
         {settings ? (
           <div className="gwmb-form gwmb-form-4">
-            <label className="gwmb-form-row">
+            <div className="gwmb-form-row">
               <span>隧道开关</span>
-              <select
-                className="gwmb-select"
-                value={settings.tunnelEnabled ? 'on' : 'off'}
-                onChange={(event) => updateSetting('tunnelEnabled', event.target.value === 'on')}
-              >
-                <option value="on">启用（Quick/Named Tunnel）</option>
-                <option value="off">关闭（仅本机访问）</option>
-              </select>
-            </label>
+              <div className="gwmb-switch-row">
+                <Toggle
+                  checked={settings.tunnelEnabled}
+                  label="隧道开关"
+                  onChange={(value) => updateSetting('tunnelEnabled', value)}
+                />
+                <span className="gwmb-meta">{settings.tunnelEnabled ? '已启用' : '已关闭'}</span>
+              </div>
+              <span className="gwmb-meta gwmb-muted">启用后手机可通过公网隧道访问；关闭后仅本机可访问。</span>
+            </div>
             <label className="gwmb-form-row">
               <span>DSH 代理超时（毫秒）</span>
               <input
@@ -1887,28 +1910,26 @@ function WeixinTab(): ReactElement {
       <section className="gwmb-card">
         <h3>通知设置</h3>
         <div className="gwmb-form">
-          <label className="gwmb-form-row">
+          <div className="gwmb-form-row">
             <span>微信通道</span>
-            <select
-              className="gwmb-select"
-              value={form.enabled ? 'on' : 'off'}
-              onChange={(event) => update('enabled', event.target.value === 'on')}
-            >
-              <option value="on">启用</option>
-              <option value="off">禁用</option>
-            </select>
-          </label>
-          <label className="gwmb-form-row">
+            <div className="gwmb-switch-row">
+              <Toggle checked={form.enabled} label="微信通道" onChange={(value) => update('enabled', value)} />
+              <span className="gwmb-meta">{form.enabled ? '已启用' : '已禁用'}</span>
+            </div>
+            <span className="gwmb-meta gwmb-muted">启用后微信可作为远程通知与审批通道；禁用后不再转发任何消息。</span>
+          </div>
+          <div className="gwmb-form-row">
             <span>完成通知</span>
-            <select
-              className="gwmb-select"
-              value={form.notifyEnabled ? 'on' : 'off'}
-              onChange={(event) => update('notifyEnabled', event.target.value === 'on')}
-            >
-              <option value="on">启用</option>
-              <option value="off">禁用</option>
-            </select>
-          </label>
+            <div className="gwmb-switch-row">
+              <Toggle
+                checked={form.notifyEnabled}
+                label="完成通知"
+                onChange={(value) => update('notifyEnabled', value)}
+              />
+              <span className="gwmb-meta">{form.notifyEnabled ? '已启用' : '已禁用'}</span>
+            </div>
+            <span className="gwmb-meta gwmb-muted">智能体完成任务时推送通知；关闭后只保留审批与提问消息。</span>
+          </div>
           <label className="gwmb-form-row">
             <span>合并窗口（秒）</span>
             <input
@@ -1918,6 +1939,7 @@ function WeixinTab(): ReactElement {
               value={form.debounceSeconds}
               onChange={(event) => update('debounceSeconds', event.target.value)}
             />
+            <span className="gwmb-meta gwmb-muted">窗口内的连续完成消息合并为一条推送。</span>
           </label>
           <label className="gwmb-form-row">
             <span>单会话冷却（秒）</span>
@@ -1928,6 +1950,7 @@ function WeixinTab(): ReactElement {
               value={form.perSessionSeconds}
               onChange={(event) => update('perSessionSeconds', event.target.value)}
             />
+            <span className="gwmb-meta gwmb-muted">同一会话两次推送之间的最小间隔。</span>
           </label>
           <label className="gwmb-form-row">
             <span>全局间隔（秒）</span>
@@ -1938,6 +1961,7 @@ function WeixinTab(): ReactElement {
               value={form.globalSeconds}
               onChange={(event) => update('globalSeconds', event.target.value)}
             />
+            <span className="gwmb-meta gwmb-muted">不同会话之间推送的最小间隔。</span>
           </label>
           <label className="gwmb-form-row">
             <span>每小时上限（条）</span>
@@ -1948,6 +1972,7 @@ function WeixinTab(): ReactElement {
               value={form.maxPerHour}
               onChange={(event) => update('maxPerHour', event.target.value)}
             />
+            <span className="gwmb-meta gwmb-muted">每小时最多推送的完成通知条数。</span>
           </label>
         </div>
         <div className="gwmb-actions">
