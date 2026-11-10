@@ -176,12 +176,15 @@ const STYLE = `
 .gwmb-bad { color: var(--dsw-alias-state-error-primary); }
 .gwmb-muted { color: var(--dsw-alias-label-dimmed); }
 .gwmb-note { font-size: 13px; line-height: 1.6; color: var(--dsw-alias-label-secondary); }
-.gwmb-code { font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 12px; }
+.gwmb-code { font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 12px; overflow-wrap: anywhere; }
 .gwmb-error { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent); }
 .gwmb-banner { border: 1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, transparent); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent); color: var(--dsw-alias-label-primary); border-radius: var(--dsw-radius-md, 10px); padding: 10px 14px; font-size: 13px; }
 .gwmb-qr { display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-md, 10px); padding: 10px; width: 232px; max-width: 100%; }
 .gwmb-qr svg { width: 100%; height: auto; display: block; }
-.gwmb-pairing-meta { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.gwmb-pairing-grid { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 760px) { .gwmb-pairing-grid { grid-template-columns: minmax(0, 1fr); } }
+.gwmb-pairing-main { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.gwmb-pairing-meta { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .gwmb-code-big { font-size: 30px; letter-spacing: .18em; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
 .gwmb-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
 .gwmb-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--dsw-alias-label-primary); }
@@ -417,25 +420,15 @@ function PairingTab(): ReactElement {
         </div>
       ) : null}
 
-      <div className="gwmb-grid">
+      <div className="gwmb-pairing-grid">
         <section className="gwmb-card">
           <h3>扫码配对</h3>
           {data ? (
-            <div className="gwmb-row">
+            <div className="gwmb-pairing-main">
               <div className="gwmb-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
-              <div className="gwmb-pairing-meta">
-                <div className="gwmb-meta">配对码（{formatDuration(remaining)} 内有效）</div>
-                <div className="gwmb-code-big">{data.code}</div>
-                <div className="gwmb-meta gwmb-code">{data.pairingUrl}</div>
-                <div className="gwmb-actions">
-                  <button className="gwmb-btn" type="button" onClick={() => void copy()}>
-                    {copied ? '已复制' : '复制配对链接'}
-                  </button>
-                  <button className="gwmb-btn" type="button" disabled={busy} onClick={() => void regenerate()}>
-                    {busy ? '生成中…' : '重新生成'}
-                  </button>
-                </div>
-              </div>
+              <div className="gwmb-meta">8 位配对码</div>
+              <div className="gwmb-code-big">{data.code}</div>
+              <div className="gwmb-meta gwmb-muted">手机扫码，或在手机入口输入该配对码</div>
             </div>
           ) : (
             <div className="gwmb-meta">正在读取配对信息…</div>
@@ -443,20 +436,36 @@ function PairingTab(): ReactElement {
           {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
         </section>
 
-        <StatusCard title="有效期">
-          <div className={`gwmb-value ${data?.status.valid ? 'gwmb-ok' : 'gwmb-warn'}`}>
-            {data ? formatDuration(remaining) : '—'}
-          </div>
-          <div className="gwmb-meta">
-            {data ? (data.status.valid ? '当前配对码有效' : data.status.used ? '已使用' : '已过期') : '—'}
-          </div>
-          <div className="gwmb-meta gwmb-muted">用掉或过期后可在本机重新生成</div>
-        </StatusCard>
-
-        <StatusCard title="手机入口">
-          <div className="gwmb-meta gwmb-code">{data?.tunnel.url ?? '隧道未连接'}</div>
-          <div className="gwmb-meta">手机扫上方二维码，或打开公网入口后输入 8 位配对码。</div>
-        </StatusCard>
+        <section className="gwmb-card">
+          <h3>手机入口与链接</h3>
+          {data ? (
+            <div className="gwmb-pairing-meta">
+              <div>
+                <div className="gwmb-meta">手机入口</div>
+                <div className="gwmb-code">{data.tunnel.url || '隧道未连接'}</div>
+              </div>
+              <div>
+                <div className="gwmb-meta">配对链接</div>
+                <div className="gwmb-code">{data.pairingUrl}</div>
+              </div>
+              <div className={`gwmb-meta ${data.status.valid ? 'gwmb-ok' : 'gwmb-warn'}`}>
+                有效期 {formatDuration(remaining)} ·{' '}
+                {data.status.valid ? '当前配对码有效' : data.status.used ? '配对码已使用' : '配对码已过期'}
+              </div>
+              <div className="gwmb-actions">
+                <button className="gwmb-btn" type="button" onClick={() => void copy()}>
+                  {copied ? '已复制' : '复制配对链接'}
+                </button>
+                <button className="gwmb-btn" type="button" disabled={busy} onClick={() => void regenerate()}>
+                  {busy ? '生成中…' : '重新生成'}
+                </button>
+              </div>
+              <div className="gwmb-meta gwmb-muted">
+                配对码用掉或过期后，可在这里重新生成；手机端工作台为只读视图，不显示配对码。
+              </div>
+            </div>
+          ) : null}
+        </section>
       </div>
     </>
   )
