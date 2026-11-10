@@ -170,6 +170,8 @@ const STYLE = `
 .gwmb-btn-sm { padding: 3px 8px; font-size: 12px; }
 .gwmb-tunnel-actions { flex-wrap: nowrap; width: 100%; }
 .gwmb-tunnel-actions .gwmb-btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; font-size: 12px; line-height: 1.4; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
+.gwmb-tunnel-btn { min-height: 34px; color: var(--dsw-alias-label-secondary); }
+.gwmb-tunnel-btn:hover:not(:disabled) { color: var(--dsw-alias-label-primary); }
 .gwmb-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--dsw-alias-border-l1); padding-bottom: 6px; }
 .gwmb-tab { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 14px; padding: 7px 12px; border-radius: var(--dsw-radius-md, 10px); cursor: pointer; }
 .gwmb-tab:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -350,6 +352,42 @@ function ErrorCard(props: { title: string; children: ReactNode }): ReactElement 
   )
 }
 
+function PlayIcon(props: { size?: number }): ReactElement {
+  return (
+    <svg width={props.size ?? 16} height={props.size ?? 16} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+      <path d="M8 5.2v13.6L19 12 8 5.2Z" />
+    </svg>
+  )
+}
+
+function StopIcon(props: { size?: number }): ReactElement {
+  return (
+    <svg width={props.size ?? 16} height={props.size ?? 16} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+      <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />
+    </svg>
+  )
+}
+
+function RefreshIcon(props: { size?: number }): ReactElement {
+  return (
+    <svg
+      width={props.size ?? 16}
+      height={props.size ?? 16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+      <path d="M20 4.5V11h-6.5" />
+    </svg>
+  )
+}
+
 function OverviewTab(props: {
   ping: PingView | null
   refreshedAt: string
@@ -406,28 +444,34 @@ function OverviewTab(props: {
           {props.local ? (
             <div className="gwmb-actions gwmb-tunnel-actions">
               <button
-                className="gwmb-btn"
+                className="gwmb-btn gwmb-tunnel-btn"
                 type="button"
+                title="启动隧道"
+                aria-label="启动隧道"
                 disabled={tunnelBusy !== '' || !ping}
                 onClick={() => void controlTunnel('start')}
               >
-                启动
+                <PlayIcon />
               </button>
               <button
-                className="gwmb-btn"
+                className="gwmb-btn gwmb-tunnel-btn"
                 type="button"
+                title="停止隧道"
+                aria-label="停止隧道"
                 disabled={tunnelBusy !== '' || !ping}
                 onClick={() => void controlTunnel('stop')}
               >
-                停止
+                <StopIcon />
               </button>
               <button
-                className="gwmb-btn"
+                className="gwmb-btn gwmb-tunnel-btn"
                 type="button"
+                title="重连隧道"
+                aria-label="重连隧道"
                 disabled={tunnelBusy !== '' || !ping}
                 onClick={() => void controlTunnel('restart')}
               >
-                重连
+                <RefreshIcon />
               </button>
             </div>
           ) : null}
