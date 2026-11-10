@@ -168,9 +168,11 @@ const STYLE = `
 .gwmb-btn:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
 .gwmb-btn:disabled { opacity: .5; cursor: default; }
 .gwmb-btn-sm { padding: 3px 8px; font-size: 12px; }
-.gwmb-tunnel-actions { flex-wrap: nowrap; width: 100%; }
-.gwmb-tunnel-actions .gwmb-btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; font-size: 12px; line-height: 1.4; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
-.gwmb-tunnel-btn { min-height: 34px; color: var(--dsw-alias-label-secondary); }
+.gwmb-tunnel-actions { flex-wrap: nowrap; width: 100%; gap: 6px; }
+.gwmb-tunnel-actions .gwmb-btn { flex: 0 0 auto; min-width: 0; font-size: 12px; line-height: 1.4; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
+.gwmb-tunnel-actions .gwmb-tunnel-btn { width: 32px; height: 26px; padding: 0; }
+.gwmb-tunnel-btn { min-height: 26px; color: var(--dsw-alias-label-secondary); }
+.gwmb-tunnel-btn svg { width: 18px; height: 18px; }
 .gwmb-tunnel-btn:hover:not(:disabled) { color: var(--dsw-alias-label-primary); }
 .gwmb-tunnel-btn-danger { color: var(--dsw-alias-state-error-primary); }
 .gwmb-tunnel-btn-danger:hover:not(:disabled) { color: var(--dsw-alias-state-error-primary); filter: brightness(1.12); }
