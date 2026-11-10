@@ -169,7 +169,7 @@ const STYLE = `
 .gwmb-btn:disabled { opacity: .5; cursor: default; }
 .gwmb-btn-sm { padding: 3px 8px; font-size: 12px; }
 .gwmb-tunnel-actions { flex-wrap: nowrap; width: 100%; }
-.gwmb-tunnel-actions .gwmb-btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; font-size: 12px; white-space: nowrap; }
+.gwmb-tunnel-actions .gwmb-btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; font-size: 12px; line-height: 1.4; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
 .gwmb-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--dsw-alias-border-l1); padding-bottom: 6px; }
 .gwmb-tab { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 14px; padding: 7px 12px; border-radius: var(--dsw-radius-md, 10px); cursor: pointer; }
 .gwmb-tab:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -411,7 +411,7 @@ function OverviewTab(props: {
                 disabled={tunnelBusy !== '' || !ping}
                 onClick={() => void controlTunnel('start')}
               >
-                {tunnelBusy === 'start' ? '启动中…' : '启动'}
+                启动
               </button>
               <button
                 className="gwmb-btn"
@@ -419,7 +419,7 @@ function OverviewTab(props: {
                 disabled={tunnelBusy !== '' || !ping}
                 onClick={() => void controlTunnel('stop')}
               >
-                {tunnelBusy === 'stop' ? '停止中…' : '停止'}
+                停止
               </button>
               <button
                 className="gwmb-btn"
@@ -427,8 +427,13 @@ function OverviewTab(props: {
                 disabled={tunnelBusy !== '' || !ping}
                 onClick={() => void controlTunnel('restart')}
               >
-                {tunnelBusy === 'restart' ? '重连中…' : '重连'}
+                重连
               </button>
+            </div>
+          ) : null}
+          {tunnelBusy !== '' ? (
+            <div className="gwmb-meta">
+              {tunnelBusy === 'start' ? '正在启动隧道…' : tunnelBusy === 'stop' ? '正在停止隧道…' : '正在重连隧道…'}
             </div>
           ) : null}
           {tunnelError ? <div className="gwmb-meta gwmb-bad">{tunnelError}</div> : null}
@@ -1626,8 +1631,9 @@ function WorkbenchPage(): ReactElement {
   const [refreshedAt, setRefreshedAt] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const load = useCallback(async (): Promise<void> => {
-    setLoading(true)
+  const load = useCallback(async (options?: { silent?: boolean }): Promise<void> => {
+    const silent = options?.silent === true
+    if (!silent) setLoading(true)
     try {
       const payload = await apiGet<PingView>('/api/gateway-mobile/read/ping')
       setPing(payload)
@@ -1636,14 +1642,14 @@ function WorkbenchPage(): ReactElement {
     } catch (cause) {
       setError(messageOf(cause))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void load()
     const timer = window.setInterval(() => {
-      void load()
+      void load({ silent: true })
     }, 10_000)
     return () => window.clearInterval(timer)
   }, [load])
@@ -1744,7 +1750,7 @@ function WorkbenchPage(): ReactElement {
             refreshedAt={refreshedAt}
             bridgeReady={bridgeReady}
             local={local}
-            onRefresh={() => void load()}
+            onRefresh={() => void load({ silent: true })}
           />
         ) : null}
         {tab === 'pairing' && local ? <PairingTab /> : null}
