@@ -39,6 +39,8 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
 - Compatibility switch: 设置 → 安全与维护 → 独立管理台 can disable the standalone page (it then
   answers 404 while loopback APIs stay available). The header link hides when disabled.
 - Default gateway port is now `3091` (was `3081`); update any bookmarks or reverse proxies.
+- The pairing tab's URL-change banner now clears itself: the host reports `repairedSinceChange`
+  (a device paired after `urlChangedAt`), and the banner can be dismissed per change (localStorage).
 - Layout follows the DSH main-panel page contract: header and tabs stay frozen, only the tab content
   scrolls, and tables/logs keep one-line cells where they must not wrap.
 - Version bumped to `0.2.0-next.0` for the npm `next` dist-tag; `engines.dsh` stays pinned to `0.2.2-rc.1`.

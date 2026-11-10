@@ -31,6 +31,8 @@ export const inject = ['slots', 'locale']
 const PANEL_ID = 'gateway-mobile-workbench'
 /** Locale namespace for the sidebar label. */
 const NS = 'gatewayWorkbench'
+/** localStorage key: last `urlChangedAt` whose re-pair banner was dismissed. */
+const URL_CHANGE_DISMISSED_KEY = 'dsh-gateway-mobile:pairing-url-dismissed'
 
 interface SlotOptions {
   name: string
@@ -109,6 +111,7 @@ interface PairingView {
   status: { valid: boolean; expiresIn: number; used: boolean }
   previousUrl: string
   urlChangedAt: number
+  repairedSinceChange?: boolean
 }
 
 interface DeviceView {
@@ -195,7 +198,10 @@ const STYLE = `
 .gwmb-note { font-size: 13px; line-height: 1.6; color: var(--dsw-alias-label-secondary); }
 .gwmb-code { font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 12px; overflow-wrap: anywhere; }
 .gwmb-error { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent); }
-.gwmb-banner { border: 1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, transparent); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent); color: var(--dsw-alias-label-primary); border-radius: var(--dsw-radius-md, 10px); padding: 10px 14px; font-size: 13px; }
+.gwmb-banner { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; border: 1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, transparent); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent); color: var(--dsw-alias-label-primary); border-radius: var(--dsw-radius-md, 10px); padding: 10px 14px; font-size: 13px; }
+.gwmb-banner-close { flex: 0 0 auto; appearance: none; border: 0; background: transparent; color: inherit; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; cursor: pointer; opacity: .75; }
+.gwmb-banner-close:hover { opacity: 1; background: var(--dsw-alias-interactive-bg-hover); }
+.gwmb-banner-close:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
 .gwmb-qr { display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-md, 10px); padding: 10px; width: 100%; max-width: 100%; }
 .gwmb-qr.gwmb-qr-sm { width: 180px; max-width: 180px; padding: 8px; flex: 0 0 auto; }
 .gwmb-divider { height: 1px; background: var(--dsw-alias-border-l1); margin: 4px 0; }
@@ -651,6 +657,7 @@ function PairingTab(): ReactElement {
   const [showEntry, setShowEntry] = useState(true)
   const [showPairingLink, setShowPairingLink] = useState(false)
   const [showCode, setShowCode] = useState(false)
+  const [dismissedUrlChangedAt, setDismissedUrlChangedAt] = useState<number | null>(null)
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -693,6 +700,30 @@ function PairingTab(): ReactElement {
     }
   }
 
+  useEffect(() => {
+    const changedAt = data?.urlChangedAt
+    if (!changedAt) {
+      setDismissedUrlChangedAt(null)
+      return
+    }
+    try {
+      const stored = window.localStorage.getItem(URL_CHANGE_DISMISSED_KEY)
+      setDismissedUrlChangedAt(stored === String(changedAt) ? changedAt : null)
+    } catch {
+      setDismissedUrlChangedAt(null)
+    }
+  }, [data?.urlChangedAt])
+
+  const dismissUrlChange = (): void => {
+    if (!data?.urlChangedAt) return
+    try {
+      window.localStorage.setItem(URL_CHANGE_DISMISSED_KEY, String(data.urlChangedAt))
+    } catch {
+      // local storage unavailable: hide for this session only
+    }
+    setDismissedUrlChangedAt(data.urlChangedAt)
+  }
+
   if (error && !data) {
     return (
       <ErrorCard title="配对信息不可用">
@@ -703,9 +734,21 @@ function PairingTab(): ReactElement {
 
   return (
     <>
-      {data?.previousUrl ? (
+      {data?.previousUrl &&
+      data.urlChangedAt > 0 &&
+      data.repairedSinceChange !== true &&
+      dismissedUrlChangedAt !== data.urlChangedAt ? (
         <div className="gwmb-banner">
-          隧道地址已变化：旧地址 {data.previousUrl} 已失效，手机需要重新配对。
+          <span>隧道地址已变化：旧地址 {data.previousUrl} 已失效，手机需要重新配对。</span>
+          <button
+            className="gwmb-banner-close"
+            type="button"
+            aria-label="关闭提示"
+            title="关闭提示"
+            onClick={dismissUrlChange}
+          >
+            ×
+          </button>
         </div>
       ) : null}
 

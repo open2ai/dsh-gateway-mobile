@@ -164,6 +164,8 @@ export interface PairingPayload {
   previousUrl: string
   /** Epoch ms of the last observed public-base change. */
   urlChangedAt: number
+  /** True when a device paired after the last public-base change. */
+  repairedSinceChange: boolean
 }
 
 export interface GatewayStatusPayload {
@@ -1054,6 +1056,7 @@ export class Gateway {
     const current = this.pairing.describe()
     const base = this.publicBase()
     const pairingUrl = `${base}/mobile/pair#pairing=${current.code}`
+    const changedAt = this.urlChangedAt
     return {
       code: current.formatted,
       codeRaw: current.code,
@@ -1064,7 +1067,10 @@ export class Gateway {
       tunnel: this.tunnel.status(),
       status: this.pairing.status(),
       previousUrl: this.previousPublicBase,
-      urlChangedAt: this.urlChangedAt,
+      urlChangedAt: changedAt,
+      repairedSinceChange:
+        changedAt > 0 &&
+        [...this.devices.devices.values()].some((device) => device.createdAt > changedAt),
     }
   }
 
