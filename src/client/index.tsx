@@ -179,7 +179,7 @@ const STYLE = `
 .gwmb-ok { color: var(--dsw-alias-state-success-primary); }
 .gwmb-warn { color: var(--dsw-alias-state-warn-primary); }
 .gwmb-bad { color: var(--dsw-alias-state-error-primary); }
-.gwmb-muted { color: var(--dsw-alias-label-dimmed); }
+.gwmb-muted { color: var(--dsw-alias-label-tertiary); }
 .gwmb-note { font-size: 13px; line-height: 1.6; color: var(--dsw-alias-label-secondary); }
 .gwmb-code { font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 12px; overflow-wrap: anywhere; }
 .gwmb-error { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent); }
