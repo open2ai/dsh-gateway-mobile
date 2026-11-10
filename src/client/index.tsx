@@ -613,7 +613,7 @@ function PairingTab(): ReactElement {
                     title={showEntry ? '隐藏手机入口' : '显示手机入口'}
                     onClick={() => setShowEntry((value) => !value)}
                   >
-                    {showEntry ? <EyeOffIcon /> : <EyeIcon />}
+                    {showEntry ? <EyeIcon /> : <EyeOffIcon />}
                   </button>
                 </div>
                 <div className="gwmb-link-value">
@@ -635,7 +635,7 @@ function PairingTab(): ReactElement {
                     title={showPairingLink ? '隐藏配对链接' : '显示配对链接'}
                     onClick={() => setShowPairingLink((value) => !value)}
                   >
-                    {showPairingLink ? <EyeOffIcon /> : <EyeIcon />}
+                    {showPairingLink ? <EyeIcon /> : <EyeOffIcon />}
                   </button>
                 </div>
                 <div className="gwmb-link-value">
