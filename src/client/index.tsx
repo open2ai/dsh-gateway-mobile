@@ -225,9 +225,8 @@ const STYLE = `
 .gwmb-btn-primary:hover { background: var(--dsw-alias-button-primary-hover); }
 .gwmb-btn-danger { background: var(--dsw-alias-state-error-primary); border-color: transparent; color: #fff; }
 .gwmb-btn-danger:hover { filter: brightness(1.08); }
-.gwmb-range-picker { position: relative; display: inline-block; }
-.gwmb-range-popover { position: absolute; z-index: 1100; top: calc(100% + 6px); left: 0; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent); padding: 12px; display: flex; flex-direction: column; gap: 10px; color: var(--dsw-alias-label-primary); }
-.gwmb-range-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.gwmb-range-inline { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-md, 10px); background: var(--dsw-alias-bg-layer-2); padding: 12px; }
+.gwmb-range-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .gwmb-range-months { display: flex; flex-wrap: wrap; gap: 18px; }
 .gwmb-cal { min-width: 196px; }
 .gwmb-cal-title { font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 6px; }
@@ -1139,35 +1138,39 @@ function formatDay(ms: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-/** Two-month range picker: press on the start day and drag/click to the end day. */
+/** Inline two-month range picker: drag or click two days to select a range. */
 function DateRangePicker(props: {
   value: DateRangeValue | null
   onChange: (value: DateRangeValue | null) => void
 }): ReactElement {
-  const [open, setOpen] = useState(false)
-  const [view, setView] = useState(() => new Date())
-  const [draft, setDraft] = useState<{ anchor: number; end: number } | null>(null)
-  const [dragging, setDragging] = useState(false)
+  const [view, setView] = useState(() => (props.value ? new Date(props.value.start) : new Date()))
+  const [preview, setPreview] = useState<{ anchor: number; end: number } | null>(null)
+  const anchorRef = useRef<number | null>(null)
+  const previewRef = useRef<{ anchor: number; end: number } | null>(null)
+
+  const setPreviewBoth = (value: { anchor: number; end: number } | null): void => {
+    previewRef.current = value
+    setPreview(value)
+  }
 
   useEffect(() => {
-    if (!dragging) return
     const finish = (): void => {
-      setDragging(false)
-      setDraft((current) => {
-        if (current === null) return null
-        props.onChange({ start: dayStart(Math.min(current.anchor, current.end)), end: dayEnd(Math.max(current.anchor, current.end)) })
-        setOpen(false)
-        return null
-      })
+      const anchor = anchorRef.current
+      if (anchor === null) return
+      const end = previewRef.current?.end ?? anchor
+      anchorRef.current = null
+      setPreviewBoth(null)
+      props.onChange({ start: dayStart(Math.min(anchor, end)), end: dayEnd(Math.max(anchor, end)) })
     }
     window.addEventListener('mouseup', finish)
     return () => window.removeEventListener('mouseup', finish)
-  }, [dragging, props])
+  }, [props])
 
-  const label = props.value ? `${formatDay(props.value.start)} ~ ${formatDay(props.value.end)}` : '选择时间范围'
-
-  const range =
-    draft === null ? null : [dayStart(Math.min(draft.anchor, draft.end)), dayStart(Math.max(draft.anchor, draft.end))]
+  const activeRange: [number, number] | null = preview
+    ? [dayStart(Math.min(preview.anchor, preview.end)), dayStart(Math.max(preview.anchor, preview.end))]
+    : props.value
+      ? [dayStart(props.value.start), dayStart(props.value.end)]
+      : null
 
   const renderMonth = (base: Date): ReactElement => {
     const first = new Date(base.getFullYear(), base.getMonth(), 1)
@@ -1176,6 +1179,7 @@ function DateRangePicker(props: {
     const cells: Array<Date | null> = []
     for (let index = 0; index < offset; index += 1) cells.push(null)
     for (let day = 1; day <= count; day += 1) cells.push(new Date(base.getFullYear(), base.getMonth(), day))
+
     return (
       <div className="gwmb-cal" key={base.getTime()}>
         <div className="gwmb-cal-title">{`${base.getFullYear()}年${base.getMonth() + 1}月`}</div>
@@ -1188,7 +1192,7 @@ function DateRangePicker(props: {
           {cells.map((date, index) => {
             if (date === null) return <div key={`empty-${index}`} />
             const ms = date.getTime()
-            const active = range !== null && ms >= range[0]! && ms <= range[1]!
+            const active = activeRange !== null && ms >= activeRange[0] && ms <= activeRange[1]
             return (
               <button
                 key={ms}
@@ -1196,11 +1200,13 @@ function DateRangePicker(props: {
                 className={`gwmb-cal-day ${active ? 'gwmb-cal-day-active' : ''}`}
                 onMouseDown={(event) => {
                   event.preventDefault()
-                  setDraft({ anchor: ms, end: ms })
-                  setDragging(true)
+                  anchorRef.current = ms
+                  setPreviewBoth({ anchor: ms, end: ms })
                 }}
                 onMouseEnter={() => {
-                  if (dragging && draft !== null) setDraft({ anchor: draft.anchor, end: ms })
+                  const anchor = anchorRef.current
+                  if (anchor === null) return
+                  setPreviewBoth({ anchor, end: ms })
                 }}
               >
                 {date.getDate()}
@@ -1213,64 +1219,49 @@ function DateRangePicker(props: {
   }
 
   return (
-    <div className="gwmb-range-picker">
-      <button
-        className="gwmb-btn gwmb-btn-sm"
-        type="button"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen((value) => !value)
-          setDraft(null)
-        }}
-      >
-        {label}
-      </button>
-      {open ? (
-        <div className="gwmb-range-popover">
-          <div className="gwmb-range-head">
-            <button
-              className="gwmb-icon-btn"
-              type="button"
-              aria-label="上个月"
-              onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
-            >
-              ‹
-            </button>
-            <span className="gwmb-meta">按住并拖到结束日期，或依次点击两天</span>
-            <button
-              className="gwmb-icon-btn"
-              type="button"
-              aria-label="下个月"
-              onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
-            >
-              ›
-            </button>
-          </div>
-          <div className="gwmb-range-months">
-            {renderMonth(view)}
-            {renderMonth(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
-          </div>
-          <div className="gwmb-actions">
-            <button
-              className="gwmb-btn gwmb-btn-sm"
-              type="button"
-              onClick={() => {
-                props.onChange(null)
-                setOpen(false)
-              }}
-            >
-              清除
-            </button>
-            <button className="gwmb-btn gwmb-btn-sm" type="button" onClick={() => setOpen(false)}>
-              关闭
-            </button>
-          </div>
-        </div>
-      ) : null}
+    <div className="gwmb-range-inline">
+      <div className="gwmb-range-nav">
+        <button
+          className="gwmb-btn gwmb-btn-sm"
+          type="button"
+          aria-label="上个月"
+          onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
+        >
+          ‹ 上个月
+        </button>
+        <span className="gwmb-meta">
+          {props.value
+            ? `已选 ${formatDay(props.value.start)} ~ ${formatDay(props.value.end)}`
+            : '按住开始日期拖到结束日期，或依次点击两天'}
+        </span>
+        <button
+          className="gwmb-btn gwmb-btn-sm"
+          type="button"
+          aria-label="下个月"
+          onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
+        >
+          下个月 ›
+        </button>
+      </div>
+      <div className="gwmb-range-months">
+        {renderMonth(view)}
+        {renderMonth(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
+      </div>
+      <div className="gwmb-actions">
+        <button
+          className="gwmb-btn gwmb-btn-sm"
+          type="button"
+          onClick={() => {
+            setPreviewBoth(null)
+            props.onChange(null)
+          }}
+        >
+          清除选择
+        </button>
+      </div>
     </div>
   )
 }
-
 function LogsTab(): ReactElement {
   const [view, setView] = useState<'runtime' | 'weixin'>('runtime')
   const [logs, setLogs] = useState<LogItem[] | null>(null)
