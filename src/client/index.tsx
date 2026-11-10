@@ -60,7 +60,7 @@ const DICTIONARIES: Record<string, Record<string, string>> = {
   en: { panel: 'Mobile Gateway' },
 }
 
-type Tab = 'overview' | 'pairing' | 'devices' | 'logs' | 'settings'
+type Tab = 'overview' | 'pairing' | 'weixin' | 'devices' | 'logs' | 'settings'
 
 interface TunnelView {
   enabled: boolean
@@ -1268,6 +1268,291 @@ function LogsTab(): ReactElement {
   )
 }
 
+function WeixinTab(): ReactElement {
+  const [status, setStatus] = useState<WeixinView | null>(null)
+  const [form, setForm] = useState<WeixinForm | null>(null)
+  const [login, setLogin] = useState<WeixinLoginView | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      const payload = await apiGet<WeixinView>('/api/gateway-mobile/read/weixin')
+      setStatus(payload)
+      setForm(toWeixinForm(payload))
+      setError('')
+    } catch (cause) {
+      setError(messageOf(cause))
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const loginState = login?.state ?? ''
+  useEffect(() => {
+    if (!['wait', 'scaned', 'pending'].includes(loginState)) return
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const next = await apiGet<WeixinLoginView>('/api/gateway-mobile/admin/weixin/login')
+          setLogin(next)
+          if (next.state === 'confirmed') {
+            setMessage('微信已连接')
+            await load()
+          }
+        } catch (cause) {
+          setError(messageOf(cause))
+        }
+      })()
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [loginState, load])
+
+  const update = <K extends keyof WeixinForm,>(key: K, value: WeixinForm[K]): void => {
+    setForm((current) => (current === null ? current : { ...current, [key]: value }))
+    setMessage('')
+  }
+
+  const startLogin = async (): Promise<void> => {
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      setLogin(await apiPost<WeixinLoginView>('/api/gateway-mobile/admin/weixin/login'))
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const approveLogin = async (approve: boolean): Promise<void> => {
+    setBusy(true)
+    setError('')
+    try {
+      const next = await apiPost<WeixinLoginView>('/api/gateway-mobile/admin/weixin/approve', { approve })
+      setLogin(next)
+      setMessage(approve ? '已允许连接' : '已拒绝连接')
+      await load()
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doLogout = async (): Promise<void> => {
+    setBusy(true)
+    setError('')
+    try {
+      await apiPost('/api/gateway-mobile/admin/weixin/logout')
+      setLogin(null)
+      setMessage('微信已断开')
+      await load()
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const logout = (): void => {
+    setConfirmState({
+      title: '断开微信连接',
+      message: '断开后需要重新扫码登录，才能继续转发审批、提问和完成通知。',
+      confirmText: '断开',
+      danger: true,
+      action: () => void doLogout(),
+    })
+  }
+
+  const save = async (): Promise<void> => {
+    if (!form) return
+    setSaving(true)
+    setError('')
+    setMessage('')
+    try {
+      const payload = await apiPost<WeixinView>('/api/gateway-mobile/admin/weixin', {
+        enabled: form.enabled,
+        notifyEnabled: form.notifyEnabled,
+        debounceMs: Math.round(Number(form.debounceSeconds) * 1000),
+        perSessionIntervalMs: Math.round(Number(form.perSessionSeconds) * 1000),
+        globalIntervalMs: Math.round(Number(form.globalSeconds) * 1000),
+        maxPerHour: Math.round(Number(form.maxPerHour)),
+      })
+      setStatus(payload)
+      setForm(toWeixinForm(payload))
+      setMessage('微信设置已保存')
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error && status === null) {
+    return (
+      <ErrorCard title="微信不可用">
+        <div className="gwmb-meta">{error}</div>
+      </ErrorCard>
+    )
+  }
+  if (status === null || form === null) return <div className="gwmb-meta">正在读取微信状态…</div>
+
+  return (
+    <>
+      <section className="gwmb-card">
+        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
+          <h3>微信连接</h3>
+          <div className="gwmb-actions">
+            {status.weixin?.connected ? (
+              <button className="gwmb-btn" type="button" disabled={busy} onClick={logout}>
+                退出登录
+              </button>
+            ) : (
+              <button
+                className="gwmb-btn gwmb-btn-primary"
+                type="button"
+                disabled={busy}
+                onClick={() => void startLogin()}
+              >
+                {busy ? '生成中…' : '生成登录二维码'}
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="gwmb-meta">
+          状态 {status.weixin?.state ?? (status.weixin?.connected ? 'connected' : '未连接')}
+          {status.weixin?.owner?.masked ? ` · 绑定账号 ${status.weixin.owner.masked}` : ''}
+          {status.weixin?.lastError ? ` · ${status.weixin.lastError}` : ''}
+        </div>
+        {login ? (
+          <div className="gwmb-row">
+            {login.qrSvg ? (
+              <div className="gwmb-qr gwmb-qr-sm" dangerouslySetInnerHTML={{ __html: login.qrSvg }} />
+            ) : null}
+            <div className="gwmb-pairing-meta">
+              <div className="gwmb-meta">
+                状态 {login.state}
+                {login.pendingUserId ? ' · 等待本机确认' : ''}
+                {login.lastError ? ` · ${login.lastError}` : ''}
+              </div>
+              {login.state === 'pending' ? (
+                <div className="gwmb-actions">
+                  <button
+                    className="gwmb-btn gwmb-btn-primary"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void approveLogin(true)}
+                  >
+                    允许连接
+                  </button>
+                  <button className="gwmb-btn" type="button" disabled={busy} onClick={() => void approveLogin(false)}>
+                    拒绝
+                  </button>
+                </div>
+              ) : null}
+              {login.state === 'expired' || login.state === 'error' ? (
+                <button className="gwmb-btn" type="button" disabled={busy} onClick={() => void startLogin()}>
+                  重新生成二维码
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <div className="gwmb-meta gwmb-muted">
+          扫码完成后需在本机点「允许连接」；审批历史在「日志」页签查看。
+        </div>
+      </section>
+
+      <section className="gwmb-card">
+        <h3>通知设置</h3>
+        <div className="gwmb-form">
+          <label className="gwmb-form-row">
+            <span>微信通道</span>
+            <select
+              className="gwmb-select"
+              value={form.enabled ? 'on' : 'off'}
+              onChange={(event) => update('enabled', event.target.value === 'on')}
+            >
+              <option value="on">启用</option>
+              <option value="off">禁用</option>
+            </select>
+          </label>
+          <label className="gwmb-form-row">
+            <span>完成通知</span>
+            <select
+              className="gwmb-select"
+              value={form.notifyEnabled ? 'on' : 'off'}
+              onChange={(event) => update('notifyEnabled', event.target.value === 'on')}
+            >
+              <option value="on">启用</option>
+              <option value="off">禁用</option>
+            </select>
+          </label>
+          <label className="gwmb-form-row">
+            <span>合并窗口（秒）</span>
+            <input
+              className="gwmb-input"
+              type="number"
+              min="1"
+              value={form.debounceSeconds}
+              onChange={(event) => update('debounceSeconds', event.target.value)}
+            />
+          </label>
+          <label className="gwmb-form-row">
+            <span>单会话冷却（秒）</span>
+            <input
+              className="gwmb-input"
+              type="number"
+              min="0"
+              value={form.perSessionSeconds}
+              onChange={(event) => update('perSessionSeconds', event.target.value)}
+            />
+          </label>
+          <label className="gwmb-form-row">
+            <span>全局间隔（秒）</span>
+            <input
+              className="gwmb-input"
+              type="number"
+              min="0"
+              value={form.globalSeconds}
+              onChange={(event) => update('globalSeconds', event.target.value)}
+            />
+          </label>
+          <label className="gwmb-form-row">
+            <span>每小时上限（条）</span>
+            <input
+              className="gwmb-input"
+              type="number"
+              min="1"
+              value={form.maxPerHour}
+              onChange={(event) => update('maxPerHour', event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="gwmb-actions">
+          <button className="gwmb-btn gwmb-btn-primary" type="button" disabled={saving} onClick={() => void save()}>
+            {saving ? '保存中…' : '保存设置'}
+          </button>
+        </div>
+      </section>
+
+      {message ? <div className="gwmb-meta gwmb-ok">{message}</div> : null}
+      {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
+
+      {confirmState ? (
+        <ConfirmDialog state={confirmState} busy={busy} onClose={() => setConfirmState(null)} />
+      ) : null}
+    </>
+  )
+}
+
 interface SettingsForm {
   sessionDays: string
   pairingMinutes: string
@@ -1310,6 +1595,7 @@ interface WeixinView {
 }
 
 interface WeixinForm {
+  enabled: boolean
   notifyEnabled: boolean
   debounceSeconds: string
   perSessionSeconds: string
@@ -1320,6 +1606,7 @@ interface WeixinForm {
 function toWeixinForm(payload: WeixinView): WeixinForm {
   const notify = payload.notify
   return {
+    enabled: payload.weixin?.enabled !== false,
     notifyEnabled: notify?.enabled ?? true,
     debounceSeconds: notify ? String(Math.round(notify.debounceMs / 1000)) : '5',
     perSessionSeconds: notify ? String(Math.round(notify.perSessionIntervalMs / 1000)) : '60',
@@ -1375,16 +1662,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       setForm(toSettingsForm(settingsPayload))
       setLimits(settingsPayload.limits)
       setVersion(settingsPayload.version ?? '')
-      // The WeChat read route is newer than the base settings route; degrade to
-      // the channel switch only when an older host does not expose it yet.
-      try {
-        const weixinPayload = await apiGet<WeixinView>('/api/gateway-mobile/read/weixin')
-        setWeixinStatus(weixinPayload)
-        setWeixinForm(toWeixinForm(weixinPayload))
-      } catch {
-        setWeixinStatus(null)
-        setWeixinForm(null)
-      }
       try {
         const [keyPayload, oauthResult] = await Promise.all([
           apiGet<KeyView>('/api/gateway-mobile/read/keys'),
@@ -1408,30 +1685,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
   useEffect(() => {
     void load()
   }, [load])
-
-  const loginState = loginStatus?.state ?? ''
-  useEffect(() => {
-    if (!['wait', 'scaned', 'pending'].includes(loginState)) return
-    const timer = window.setInterval(() => {
-      void (async () => {
-        try {
-          const next = await apiGet<WeixinLoginView>('/api/gateway-mobile/admin/weixin/login')
-          setLoginStatus(next)
-          if (next.state === 'confirmed') {
-            setMessage('微信已连接')
-            try {
-              setWeixinStatus(await apiGet<WeixinView>('/api/gateway-mobile/read/weixin'))
-            } catch {
-              // keep the last known channel state
-            }
-          }
-        } catch (cause) {
-          setError(messageOf(cause))
-        }
-      })()
-    }, 2000)
-    return () => window.clearInterval(timer)
-  }, [loginState])
 
   const update = <K extends keyof SettingsForm,>(key: K, value: SettingsForm[K]): void => {
     setForm((current) => (current === null ? current : { ...current, [key]: value }))
@@ -1464,23 +1717,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       setForm(toSettingsForm(payload))
       setLimits(payload.limits)
       setVersion(payload.version ?? version)
-
-      if (weixinForm) {
-        const policy = {
-          enabled: form.weixinEnabled,
-          notifyEnabled: weixinForm.notifyEnabled,
-          debounceMs: Math.round(Number(weixinForm.debounceSeconds) * 1000),
-          perSessionIntervalMs: Math.round(Number(weixinForm.perSessionSeconds) * 1000),
-          globalIntervalMs: Math.round(Number(weixinForm.globalSeconds) * 1000),
-          maxPerHour: Math.round(Number(weixinForm.maxPerHour)),
-        }
-        if (Object.values(policy).some((value) => typeof value === 'number' && !Number.isFinite(value))) {
-          throw new Error('请填写有效的通知参数（秒/条）')
-        }
-        const nextWeixin = await apiPost<WeixinView>('/api/gateway-mobile/admin/weixin', policy)
-        setWeixinStatus(nextWeixin)
-        setWeixinForm(toWeixinForm(nextWeixin))
-      }
       setMessage('设置已保存并生效')
     } catch (cause) {
       setError(messageOf(cause))
@@ -1674,142 +1910,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       </section>
 
       <section className="gwmb-card">
-        <h3>微信</h3>
-        <div className="gwmb-form">
-          <label className="gwmb-form-row">
-            <span>微信通道</span>
-            <select
-              className="gwmb-select"
-              value={form.weixinEnabled ? 'on' : 'off'}
-              onChange={(event) => update('weixinEnabled', event.target.value === 'on')}
-            >
-              <option value="on">启用</option>
-              <option value="off">禁用</option>
-            </select>
-          </label>
-          {weixinForm ? (
-            <>
-              <label className="gwmb-form-row">
-                <span>完成通知</span>
-                <select
-                  className="gwmb-select"
-                  value={weixinForm.notifyEnabled ? 'on' : 'off'}
-                  onChange={(event) => updateWeixin('notifyEnabled', event.target.value === 'on')}
-                >
-                  <option value="on">启用</option>
-                  <option value="off">禁用</option>
-                </select>
-              </label>
-              <label className="gwmb-form-row">
-                <span>合并窗口（秒）</span>
-                <input
-                  className="gwmb-input"
-                  type="number"
-                  min="1"
-                  value={weixinForm.debounceSeconds}
-                  onChange={(event) => updateWeixin('debounceSeconds', event.target.value)}
-                />
-              </label>
-              <label className="gwmb-form-row">
-                <span>单会话冷却（秒）</span>
-                <input
-                  className="gwmb-input"
-                  type="number"
-                  min="0"
-                  value={weixinForm.perSessionSeconds}
-                  onChange={(event) => updateWeixin('perSessionSeconds', event.target.value)}
-                />
-              </label>
-              <label className="gwmb-form-row">
-                <span>全局间隔（秒）</span>
-                <input
-                  className="gwmb-input"
-                  type="number"
-                  min="0"
-                  value={weixinForm.globalSeconds}
-                  onChange={(event) => updateWeixin('globalSeconds', event.target.value)}
-                />
-              </label>
-              <label className="gwmb-form-row">
-                <span>每小时上限（条）</span>
-                <input
-                  className="gwmb-input"
-                  type="number"
-                  min="1"
-                  value={weixinForm.maxPerHour}
-                  onChange={(event) => updateWeixin('maxPerHour', event.target.value)}
-                />
-              </label>
-            </>
-          ) : null}
-        </div>
-        {weixinStatus?.weixin ? (
-          <div className="gwmb-meta">
-            状态 {weixinStatus.weixin.state ?? (weixinStatus.weixin.connected ? 'connected' : '未连接')}
-            {weixinStatus.weixin.owner?.masked ? ` · 绑定账号 ${weixinStatus.weixin.owner.masked}` : ''}
-            {weixinStatus.weixin.lastError ? ` · ${weixinStatus.weixin.lastError}` : ''}
-          </div>
-        ) : null}
-        <div className="gwmb-divider" />
-        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
-          <span className="gwmb-meta">扫码登录 {weixinStatus?.weixin?.connected ? '· 已连接' : '· 未连接'}</span>
-          <div className="gwmb-actions">
-            {weixinStatus?.weixin?.connected ? (
-              <button className="gwmb-btn" type="button" disabled={loginBusy} onClick={() => void logoutWeixin()}>
-                退出登录
-              </button>
-            ) : (
-              <button
-                className="gwmb-btn gwmb-btn-primary"
-                type="button"
-                disabled={loginBusy}
-                onClick={() => void startWeixinLogin()}
-              >
-                {loginBusy ? '生成中…' : '生成登录二维码'}
-              </button>
-            )}
-          </div>
-        </div>
-        {loginStatus ? (
-          <div className="gwmb-row">
-            {loginStatus.qrSvg ? (
-              <div className="gwmb-qr gwmb-qr-sm" dangerouslySetInnerHTML={{ __html: loginStatus.qrSvg }} />
-            ) : null}
-            <div className="gwmb-pairing-meta">
-              <div className="gwmb-meta">
-                状态 {loginStatus.state}
-                {loginStatus.pendingUserId ? ' · 等待本机确认' : ''}
-                {loginStatus.lastError ? ` · ${loginStatus.lastError}` : ''}
-              </div>
-              {loginStatus.state === 'pending' ? (
-                <div className="gwmb-actions">
-                  <button
-                    className="gwmb-btn gwmb-btn-primary"
-                    type="button"
-                    disabled={loginBusy}
-                    onClick={() => void approveWeixinLogin(true)}
-                  >
-                    允许连接
-                  </button>
-                  <button className="gwmb-btn" type="button" disabled={loginBusy} onClick={() => void approveWeixinLogin(false)}>
-                    拒绝
-                  </button>
-                </div>
-              ) : null}
-              {loginStatus.state === 'expired' || loginStatus.state === 'error' ? (
-                <button className="gwmb-btn" type="button" disabled={loginBusy} onClick={() => void startWeixinLogin()}>
-                  重新生成二维码
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-        <div className="gwmb-meta gwmb-muted">
-          扫码登录与 pending 审批确认在此完成；审批历史在「日志」页签查看；通知策略保存后立即生效。独立管理台仍保留作为兼容入口。
-        </div>
-      </section>
-
-      <section className="gwmb-card">
         <h3>日志</h3>
         <div className="gwmb-form">
           <label className="gwmb-form-row">
@@ -1981,6 +2081,7 @@ function WorkbenchPage(): ReactElement {
     ...(local
       ? [
           { id: 'pairing' as Tab, label: '配对' },
+          { id: 'weixin' as Tab, label: '微信' },
           { id: 'devices' as Tab, label: '设备' },
           { id: 'logs' as Tab, label: '日志' },
           { id: 'settings' as Tab, label: '设置' },
@@ -1998,7 +2099,7 @@ function WorkbenchPage(): ReactElement {
             {!bridgeReady
               ? '正在读取宿主桥状态…'
               : local
-                ? '本机可查看配对、设备、日志与设置。'
+                ? '本机可查看配对、微信、设备、日志与设置。'
                 : '手机端为只读视图。'}
           </p>
         </div>
@@ -2059,6 +2160,7 @@ function WorkbenchPage(): ReactElement {
           />
         ) : null}
         {tab === 'pairing' && local ? <PairingTab /> : null}
+        {tab === 'weixin' && local ? <WeixinTab /> : null}
         {tab === 'devices' && local ? <DevicesTab /> : null}
         {tab === 'logs' && local ? <LogsTab /> : null}
         {tab === 'settings' && local ? <SettingsTab pluginVersion={ping?.version ?? ''} /> : null}
