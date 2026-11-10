@@ -53,6 +53,7 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
 - Layout follows the DSH main-panel page contract: header and tabs stay frozen, only the tab content
   scrolls, and tables/logs keep one-line cells where they must not wrap.
 - Version is `0.2.0` (the former `next` preview was promoted to stable); `engines.dsh` stays pinned to `0.2.2-rc.1`.
+- Documentation no longer carries machine-specific paths: the repository, DSH install and data directory are referenced through placeholders (`<repo>`, `<dsh-install>`, `%USERPROFILE%\.dsh`).
 - Activation needs one `dsh web` restart after `npm run build` (DSH caches client bundle manifests until restart).
 
 ## 0.1.4 - 2026-11-09

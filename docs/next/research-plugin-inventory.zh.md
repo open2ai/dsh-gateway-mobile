@@ -2,7 +2,7 @@
 
 > 目的：为“把插件独立监控台（`/mobile/admin`）集成成 DSH Web UI 内的工作台”提供**插件侧事实基线**。本文只做只读分析，不包含产品代码改动。
 >
-> - 仓库：`F:\ai_workspace\dsh-gateway-mobile`，分支 `next`，HEAD `8783645`（工作树干净）。
+> - 仓库：`<repo>`，分支 `next`，HEAD `8783645`（工作树干净）。
 > - 运行时实测：DSH `0.2.2-rc.1`（web profile，3080），插件 `0.1.4`（网关 3091，正在运行，隧道 connected）。
 > - 分析日期：2026-11-10。对照资料：`docs/`（security / roadmap / admin-console / DETAIL / deviations / mobile-workspace / development / api）、`src/`、`web/`、`scripts/`、`test/`、本机已安装 DSH 包。
 > - 证据写法：`path:line`。行号以当前 HEAD 为准。
@@ -50,8 +50,8 @@
 
 - 网关只绑定回环：`config.ts:349-351` 拒绝非回环 `gateway.host`；`cordis.patch.yml:10-13` 写死 `127.0.0.1:3091`。
 - DSH 不暴露公网；公网入口由网关终止（`docs/architecture.zh.md:7-32`、`docs/security.zh.md:18-23`）。
-- 实测（只读 `GET /health?deep=1`）：`version=0.1.4`、`gateway.port=3091`、`dsh-upstream=http://127.0.0.1:3080 (HTTP 401)`、`tunnel=mode quick/connected/health ok`、`weixin=connected`、`capabilities={controller:true, workspaceRegistry:true, userQuestions:true, weixin:true}`、`dataDir=C:\Users\admin\.dsh\gateway-mobile`。
-- 插件安装形态：`~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 含 `dsh-gateway-mobile`，依赖为 `link:F:/ai_workspace/dsh-gateway-mobile`；即**源码目录被 link 进 profile**，改 `lib/` 后由 DSH HMR/重启生效。
+- 实测（只读 `GET /health?deep=1`）：`version=0.1.4`、`gateway.port=3091`、`dsh-upstream=http://127.0.0.1:3080 (HTTP 401)`、`tunnel=mode quick/connected/health ok`、`weixin=connected`、`capabilities={controller:true, workspaceRegistry:true, userQuestions:true, weixin:true}`、`dataDir=%USERPROFILE%\.dsh\gateway-mobile`。
+- 插件安装形态：`~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 含 `dsh-gateway-mobile`，依赖为 `link:<repo>`；即**源码目录被 link 进 profile**，改 `lib/` 后由 DSH HMR/重启生效。
 
 ### 1.2 `src/`（发布产物 `lib/`）模块职责
 
@@ -86,7 +86,7 @@
 | `src/util.ts` | cookie/UA/IP/协议/MIME/回环与代理头判定 | `util.ts:120-221` |
 | `src/errors.ts` | 产品错误码 + 中英文文案 + HTTP 映射 | `docs/api.zh.md:21-57` |
 
-### 1.3 数据目录与持久化文件（实测 `C:\Users\admin\.dsh\gateway-mobile`）
+### 1.3 数据目录与持久化文件（实测 `%USERPROFILE%\.dsh\gateway-mobile`）
 
 | 路径 | 内容 | 来源 |
 |---|---|---|
@@ -620,7 +620,7 @@ await build({
 
 ### 8.2 `engines.dsh` 精确匹配与升级风险
 
-- `package.json:33-36`：`engines.dsh = "0.2.2-rc.1"`（精确版本）、`engines.node = ">=24"`；实测运行时 Node 24.22.0、DSH 0.2.2-rc.1（`E:\soft\...\@deepseek-ai\dsh\package.json` 的 `engines.node >=24.9.0`）。
+- `package.json:33-36`：`engines.dsh = "0.2.2-rc.1"`（精确版本）、`engines.node = ">=24"`；实测运行时 Node 24.22.0、DSH 0.2.2-rc.1（`<dsh-install>\@deepseek-ai\dsh\package.json` 的 `engines.node >=24.9.0`）。
 - 插件版本来源：`src/index.ts:43-44` 从 `package.json` 读取；DSH 客户端 bundle 的 release 校验则依赖 **DSH 自身**的 `version + commit`（`dsh-client-modules/README.zh.md:50-52`），与插件版本无关。因此插件可以升到 0.2.0 而不必改 `engines.dsh`。
 - 升级风险（既有结论）：DSH 0.2.x 尚在 rc；精确 `engines.dsh` 意味着每次 DSH 升级都可能拒绝加载（`docs/roadmap.zh.md:107`、`docs/limitations.zh.md`）。工作台依赖更多 DSH 内部能力（客户端模块、槽位、路由/Remote），**应把本次目标锁定在 0.2.2-rc.1**，不承诺跨 DSH 版本；升级 DSH 时先跑 `doctor`/`hmr-check`/`integration-check`。
 - `docs/roadmap.zh.md:191-196` 的 0.2.0 计划（P2-1 手机聊天 UI、P2-2 多用户、P2-4 英文化、P2-3 provider）与本次“工作台”**部分重叠但不等价**：P2-1 是“在手机上看聊天/审批 UI”，工作台是“在本机看运维管理台”。两者可并行，但不应把工作台当作 P2-1 的替代；P2-1 仍受 Quick Tunnel 无 SSE、官方 UI 体验等限制（`docs/limitations.zh.md:5-19`）。

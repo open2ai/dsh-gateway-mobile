@@ -93,7 +93,8 @@ node scripts/doctor.mjs --json --strict
 npm run build                        # hmr-check 需要 lib/ 已存在
 npm run hmr-check                    # dsh 不在 PATH 时跳过并退出 0
 npm run hmr-check -- --strict        # 缺少 dsh 时退出 1 而不是跳过
-DSH_BIN=F:\path\to\@deepseek-ai\dsh\lib\bin.js node scripts/hmr-check.mjs
+$env:DSH_BIN = '<dsh-install>\lib\bin.js'
+node scripts/hmr-check.mjs
 ```
 
 `hmr-check` 会创建一个一次性 DSH home（`.dsh-hmr-check`），从随包 `web` 模板初始化一个

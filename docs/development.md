@@ -100,7 +100,8 @@ read from the linked profile's `cordis.patch.yml` (best effort) and defaults to 
 npm run build                        # hmr-check needs lib/ to exist
 npm run hmr-check                    # skips with exit 0 when dsh is not on PATH
 npm run hmr-check -- --strict        # missing dsh is exit 1 instead of a skip
-DSH_BIN=F:\path\to\@deepseek-ai\dsh\lib\bin.js node scripts/hmr-check.mjs
+$env:DSH_BIN = '<dsh-install>\lib\bin.js'
+node scripts/hmr-check.mjs
 ```
 
 `hmr-check` creates a throwaway DSH home (`.dsh-hmr-check`, or `%TEMP%`-independent repo

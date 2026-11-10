@@ -5,9 +5,9 @@
 
 路径简写（下同）：
 
-- `$INSTALL` = `E:\soft\setup\node-v22.20.0-win-x64\node_modules\@deepseek-ai\dsh\node_modules\@deepseek-ai`
-- `$SRC` = `E:\workspace\github_project\AI\dsh_sources_code\deepseek-harness`（源码/文档快照 v0.2.1-rc.5）
-- 仓库 = `F:\ai_workspace\dsh-gateway-mobile`（分支 next，版本 0.1.4）
+- `$INSTALL` = `<dsh-install>\node_modules\@deepseek-ai`
+- `$SRC` = `<dsh-source-checkout>`（源码/文档快照 v0.2.1-rc.5）
+- 仓库 = `<repo>`（分支 next，版本 0.1.4）
 
 ---
 
@@ -68,7 +68,7 @@
 - 半侧生命周期 = 根 Loader 行生命周期：行卸载 → 该 row 与其声明的所有子 slot 一起回收。
 - 根行约束的官方说明：`$SRC/docs/cookbook/adding-a-settings-card.zh.md:56-60`（“只把一个包的半侧挂在说明符恰为裸包名的那一行上”）。
 
-对 `dsh-gateway-mobile` 的含义：现有 `cordis.patch.yml` 的根行 `id: gateway-mobile` / `name: 'dsh-gateway-mobile'` 就是裸包名（`F:\ai_workspace\dsh-gateway-mobile\cordis.patch.yml:7-9`），因此 **把 `dsh.client` 加到该包即可，无需新增 Loader 行**。
+对 `dsh-gateway-mobile` 的含义：现有 `cordis.patch.yml` 的根行 `id: gateway-mobile` / `name: 'dsh-gateway-mobile'` 就是裸包名（`<repo>\cordis.patch.yml:7-9`），因此 **把 `dsh.client` 加到该包即可，无需新增 Loader 行**。
 
 ### 2.2 bundle 产物协议（安装态实测格式）
 
@@ -132,7 +132,7 @@ tsdown 的客户端包装规则（源码）：
 - 产物 `format:'cjs'`、`platform:'browser'`、outDir `lib`、entry 名 `client.js`（`:511-522,649-653`）。
 - 它自带的 CSS Modules/CSS 文本内联、图片 data URL 内联、`require.async` 拆包等属于**可选增强**，第三方首版不需要（`:580-648`）。
 
-esbuild 0.28.2（仓库已安装于 `F:\ai_workspace\dsh-gateway-mobile\node_modules\esbuild`）实测复刻（本机临时目录，输出经 `node --check` 通过，未在仓库内构建）：
+esbuild 0.28.2（仓库已安装于 `<repo>\node_modules\esbuild`）实测复刻（本机临时目录，输出经 `node --check` 通过，未在仓库内构建）：
 
 ```js
 // scripts/build-client.mjs（建议新增，与现有 build-web.mjs 并列）
