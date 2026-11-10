@@ -124,6 +124,7 @@ function deviceList(gateway: Gateway): PublicDevice[] {
 
 function settingsPayload(gateway: Gateway): Record<string, unknown> {
   return {
+    version: gateway.version,
     ...gateway.authSettings(),
     runtime: gateway.runtimeSettings(),
     restartRequired: [],

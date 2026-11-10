@@ -131,6 +131,7 @@ interface LogItem {
 }
 
 interface SettingsView {
+  version?: string
   sessionMaxAge?: number
   pairingTokenExpiry?: number
   limits?: { sessionMin?: number; sessionMax?: number; pairingMin?: number; pairingMax?: number }
@@ -171,6 +172,8 @@ const STYLE = `
 .gwmb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
 .gwmb-card { min-width: 0; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg, 16px); padding: 14px 16px; background: var(--dsw-alias-bg-layer-1); display: flex; flex-direction: column; gap: 6px; }
 .gwmb-card h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--dsw-alias-label-tertiary); letter-spacing: .04em; text-transform: uppercase; }
+.gwmb-inline { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.gwmb-inline-value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); }
 .gwmb-value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); }
 .gwmb-meta { font-size: 12px; color: var(--dsw-alias-label-tertiary); word-break: break-all; }
 .gwmb-ok { color: var(--dsw-alias-state-success-primary); }
@@ -299,14 +302,15 @@ function formatShortTime(value: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-function statusTone(ok: boolean): string {
-  return ok ? 'gwmb-ok' : 'gwmb-bad'
-}
-
-function StatusCard(props: { title: string; children: ReactNode }): ReactElement {
+function InfoCard(props: { title: string; value?: string; tone?: string; children?: ReactNode }): ReactElement {
   return (
     <section className="gwmb-card">
-      <h3>{props.title}</h3>
+      <div className="gwmb-inline">
+        <h3>{props.title}</h3>
+        {props.value !== undefined ? (
+          <span className={`gwmb-inline-value ${props.tone ?? ''}`}>{props.value}</span>
+        ) : null}
+      </div>
       {props.children}
     </section>
   )
@@ -357,20 +361,22 @@ function OverviewTab(props: {
         </section>
       ) : null}
       <div className="gwmb-grid">
-        <StatusCard title="网关">
-          <div className={`gwmb-value ${ping ? statusTone(true) : 'gwmb-muted'}`}>
-            {ping ? `127.0.0.1:${ping.gateway.port}` : '—'}
-          </div>
+        <InfoCard
+          title="网关"
+          value={ping ? `127.0.0.1:${ping.gateway.port}` : '—'}
+          tone={ping ? 'gwmb-ok' : 'gwmb-muted'}
+        >
           <div className="gwmb-meta">
-            版本 {ping?.version ?? '—'} · 运行 {ping ? formatUptime(ping.gateway.uptime) : '—'}
+            运行 {ping ? formatUptime(ping.gateway.uptime) : '—'}
+            {props.refreshedAt ? ` · 上次读取 ${props.refreshedAt}` : ' · 正在读取…'}
           </div>
-          <div className="gwmb-meta">{props.refreshedAt ? `上次读取 ${props.refreshedAt}` : '正在读取…'}</div>
-        </StatusCard>
+        </InfoCard>
 
-        <StatusCard title="隧道">
-          <div className={`gwmb-value ${online ? 'gwmb-ok' : ping ? 'gwmb-warn' : 'gwmb-muted'}`}>
-            {ping ? `${ping.tunnel.state}${online ? '' : '（未连接）'}` : '—'}
-          </div>
+        <InfoCard
+          title="隧道"
+          value={ping ? ping.tunnel.state : '—'}
+          tone={online ? 'gwmb-ok' : ping ? 'gwmb-warn' : 'gwmb-muted'}
+        >
           <div className="gwmb-meta">{ping ? `${ping.tunnel.mode} · ${ping.tunnel.protocol}` : '—'}</div>
           {ping?.tunnel.url ? <div className="gwmb-meta gwmb-code">{ping.tunnel.url}</div> : null}
           {props.local ? (
@@ -402,19 +408,16 @@ function OverviewTab(props: {
             </div>
           ) : null}
           {tunnelError ? <div className="gwmb-meta gwmb-bad">{tunnelError}</div> : null}
-        </StatusCard>
+        </InfoCard>
 
-        <StatusCard title="设备">
-          <div className="gwmb-value">{ping ? ping.devices.active : '—'}</div>
+        <InfoCard title="设备" value={ping ? String(ping.devices.active) : '—'}>
           <div className="gwmb-meta">
             在线 {ping ? ping.devices.online : '—'} · 已配对 {ping ? ping.devices.active : '—'}
           </div>
-          <div className="gwmb-meta gwmb-muted">
-            {ping?.local ? '本机可管理全部设备' : '手机端为只读视图'}
-          </div>
-        </StatusCard>
+          <div className="gwmb-meta">{ping?.local ? '本机可管理全部设备' : '手机端为只读视图'}</div>
+        </InfoCard>
 
-        <StatusCard title="能力">
+        <InfoCard title="能力">
           <div className="gwmb-meta">
             DSH 控制器 {ping?.capabilities.controller ? '可用' : '不可用'} · 工作区{' '}
             {ping?.capabilities.workspaceRegistry ? '可用' : '不可用'}
@@ -423,7 +426,7 @@ function OverviewTab(props: {
             用户提问 {ping?.capabilities.userQuestions ? '可用' : '不可用'} · 微信{' '}
             {ping?.capabilities.weixin ? '已启用' : '未启用'}
           </div>
-        </StatusCard>
+        </InfoCard>
       </div>
 
       {props.bridgeReady && ping?.local ? (
@@ -729,9 +732,10 @@ function toSettingsForm(settings: SettingsView): SettingsForm {
   }
 }
 
-function SettingsTab(): ReactElement {
+function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const [form, setForm] = useState<SettingsForm | null>(null)
   const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
+  const [version, setVersion] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
@@ -741,6 +745,7 @@ function SettingsTab(): ReactElement {
       const payload = await apiGet<SettingsView>('/api/gateway-mobile/read/settings')
       setForm(toSettingsForm(payload))
       setLimits(payload.limits)
+      setVersion(payload.version ?? '')
       setError('')
       setMessage('')
     } catch (cause) {
@@ -776,6 +781,7 @@ function SettingsTab(): ReactElement {
       const payload = await apiPost<SettingsView>('/api/gateway-mobile/admin/settings', patch)
       setForm(toSettingsForm(payload))
       setLimits(payload.limits)
+      setVersion(payload.version ?? version)
       setMessage('设置已保存并生效')
     } catch (cause) {
       setError(messageOf(cause))
@@ -803,6 +809,7 @@ function SettingsTab(): ReactElement {
   return (
     <section className="gwmb-card">
       <h3>设置</h3>
+      <div className="gwmb-meta">插件版本 {version || props.pluginVersion || '—'}</div>
       <div className="gwmb-meta">修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。</div>
 
       <div className="gwmb-form">
@@ -1036,7 +1043,7 @@ function WorkbenchPage(): ReactElement {
         {tab === 'pairing' && local ? <PairingTab /> : null}
         {tab === 'devices' && local ? <DevicesTab /> : null}
         {tab === 'logs' && local ? <LogsTab /> : null}
-        {tab === 'settings' && local ? <SettingsTab /> : null}
+        {tab === 'settings' && local ? <SettingsTab pluginVersion={ping?.version ?? ''} /> : null}
       </div>
     </div>
   )
