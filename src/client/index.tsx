@@ -274,6 +274,8 @@ const STYLE = `
 .gwmb-status-ok { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent); }
 .gwmb-status-warn { color: var(--dsw-alias-state-warn-primary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
 .gwmb-status-bad { color: var(--dsw-alias-state-error-primary); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
+.gwmb-access-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: start; }
+.gwmb-access-name { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); }
 .gwmb-modal-mask { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.45); }
 .gwmb-modal { box-sizing: border-box; width: min(420px, 100%); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent); padding: 18px; display: flex; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
 .gwmb-modal h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--dsw-alias-label-primary); text-transform: none; letter-spacing: 0; }
@@ -639,18 +641,29 @@ function OverviewTab(props: {
 
       {props.bridgeReady && ping?.local ? (
         <section className="gwmb-card">
-          <h3>使用提示</h3>
-          <p className="gwmb-note">
-            管理操作（配对二维码、设备、日志、设置）在本机 DSH UI 内完成；手机经网关打开同一 UI 时只看到本只读概览。
-            独立管理台仍可通过页头按钮打开。
-          </p>
+          <h3>远程访问</h3>
+          <div className="gwmb-access-row">
+            <span className="gwmb-access-name">隧道配对</span>
+            <span className="gwmb-meta">
+              用手机扫码或打开配对链接，经公网隧道访问本工作台；手机端按安全策略只读，可查看概览与设备状态，不能管理。
+            </span>
+          </div>
+          <div className="gwmb-access-row">
+            <span className="gwmb-access-name">微信通道</span>
+            <span className="gwmb-meta">
+              在「微信」页签扫码登录并在本机点「允许连接」后，可通过微信接收审批、提问与完成通知，并在微信里直接处理。
+            </span>
+          </div>
+          <div className="gwmb-meta gwmb-muted">
+            配对码、设备、日志与设置等管理操作仅在本机 DSH UI 完成；独立管理台可通过页头按钮打开，关闭兼容模式后隐藏。
+          </div>
         </section>
       ) : null}
       {props.bridgeReady && ping && !ping.local ? (
         <section className="gwmb-card">
           <h3>只读视图</h3>
           <p className="gwmb-note">
-            当前页面经移动端网关打开，按安全策略仅展示只读概览。配对码、设备、日志与设置请在本机 DSH UI 或独立管理台查看。
+            当前页面经移动端网关打开，按安全策略仅展示只读概览。配对码、设备、日志与设置等管理操作请在本机 DSH UI 完成。
           </p>
         </section>
       ) : null}
