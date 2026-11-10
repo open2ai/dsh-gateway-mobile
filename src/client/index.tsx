@@ -20,7 +20,7 @@
  * @module dsh-gateway-mobile/lib/client
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
 export const name = 'dsh-gateway-mobile/workbench'
@@ -150,7 +150,9 @@ interface SettingsView {
  * follows the active DSH theme instead of assuming a light background.
  */
 const STYLE = `
-.gwmb-page { box-sizing: border-box; width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 18px; padding: 28px clamp(16px, 4vw, 48px) 40px; max-width: 1080px; margin: 0 auto; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); }
+.gwmb-page { box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 18px; padding: 28px clamp(16px, 4vw, 48px) 0; max-width: 1080px; margin: 0 auto; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); }
+.gwmb-head, .gwmb-tabs { flex: 0 0 auto; }
+.gwmb-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-bottom: 40px; }
 .gwmb-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 20px; }
 .gwmb-title { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: 0.01em; color: var(--dsw-alias-label-primary); }
 .gwmb-sub { margin: 2px 0 0; font-size: 13px; color: var(--dsw-alias-label-secondary); }
@@ -702,6 +704,7 @@ function WorkbenchPage(): ReactElement {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshedAt, setRefreshedAt] = useState('')
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -731,6 +734,12 @@ function WorkbenchPage(): ReactElement {
   useEffect(() => {
     if (!local && tab !== 'overview') setTab('overview')
   }, [local, tab])
+
+  // Each tab starts at the top of the content area instead of keeping the
+  // previous tab's scroll offset.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 })
+  }, [tab])
 
   const phoneUrl = ping?.gateway.publicBase ? `${ping.gateway.publicBase}/mobile` : ''
   const adminUrl = ping?.gateway.adminUrl ?? ''
@@ -780,17 +789,6 @@ function WorkbenchPage(): ReactElement {
         </div>
       </header>
 
-      {error ? (
-        <ErrorCard title="宿主桥不可用">
-          <div className="gwmb-meta">
-            无法读取 <span className="gwmb-code">/api/gateway-mobile/read/ping</span>：{error}
-          </div>
-          <div className="gwmb-note">
-            若刚升级插件，需要重启一次 <span className="gwmb-code">dsh web</span> 让 DSH 载入新的客户端半侧；独立管理台不受影响。
-          </div>
-        </ErrorCard>
-      ) : null}
-
       {local ? (
         <div className="gwmb-tabs" role="tablist" aria-label="手机网关分区">
           {tabs.map((item) => (
@@ -808,11 +806,24 @@ function WorkbenchPage(): ReactElement {
         </div>
       ) : null}
 
-      {tab === 'overview' ? <OverviewTab ping={ping} refreshedAt={refreshedAt} bridgeReady={bridgeReady} /> : null}
-      {tab === 'pairing' && local ? <PairingTab /> : null}
-      {tab === 'devices' && local ? <DevicesTab /> : null}
-      {tab === 'logs' && local ? <LogsTab /> : null}
-      {tab === 'settings' && local ? <SettingsTab /> : null}
+      <div className="gwmb-scroll" ref={scrollRef}>
+        {error ? (
+          <ErrorCard title="宿主桥不可用">
+            <div className="gwmb-meta">
+              无法读取 <span className="gwmb-code">/api/gateway-mobile/read/ping</span>：{error}
+            </div>
+            <div className="gwmb-note">
+              若刚升级插件，需要重启一次 <span className="gwmb-code">dsh web</span> 让 DSH 载入新的客户端半侧；独立管理台不受影响。
+            </div>
+          </ErrorCard>
+        ) : null}
+
+        {tab === 'overview' ? <OverviewTab ping={ping} refreshedAt={refreshedAt} bridgeReady={bridgeReady} /> : null}
+        {tab === 'pairing' && local ? <PairingTab /> : null}
+        {tab === 'devices' && local ? <DevicesTab /> : null}
+        {tab === 'logs' && local ? <LogsTab /> : null}
+        {tab === 'settings' && local ? <SettingsTab /> : null}
+      </div>
     </div>
   )
 }
