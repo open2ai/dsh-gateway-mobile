@@ -1111,7 +1111,9 @@ function LogsTab(): ReactElement {
   const [approvals, setApprovals] = useState<unknown[] | null>(null)
   const [approvalsError, setApprovalsError] = useState('')
   const [exporting, setExporting] = useState(false)
-  const [exportRange, setExportRange] = useState<'24h' | '7d' | 'all'>('24h')
+  const [exportRange, setExportRange] = useState<'24h' | '7d' | '30d' | '90d' | 'custom' | 'all'>('24h')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
   const [exportMessage, setExportMessage] = useState('')
   const [exportError, setExportError] = useState('')
 
@@ -1148,11 +1150,38 @@ function LogsTab(): ReactElement {
     setExportError('')
     try {
       const dayMs = 86_400_000
-      const rangeMs = exportRange === '24h' ? dayMs : exportRange === '7d' ? 7 * dayMs : 0
-      // Time windows export every matching entry; "all" keeps the 500-entry cap.
-      const query = rangeMs > 0 ? `?since=${Date.now() - rangeMs}` : '?limit=500'
+      const presets: Record<string, number> = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 }
+      let sinceMs: number | undefined
+      let untilMs: number | undefined
+      if (exportRange === 'custom') {
+        sinceMs = customStart === '' ? Number.NaN : Date.parse(customStart)
+        untilMs = customEnd === '' ? Number.NaN : Date.parse(customEnd)
+        if (!Number.isFinite(sinceMs) || !Number.isFinite(untilMs)) {
+          throw new Error('自定义范围需要同时选择开始和结束时间')
+        }
+        if (sinceMs >= untilMs) throw new Error('开始时间必须早于结束时间')
+      } else if (exportRange !== 'all') {
+        sinceMs = Date.now() - presets[exportRange]! * dayMs
+      }
+      const params = new URLSearchParams()
+      if (sinceMs !== undefined) params.set('since', String(sinceMs))
+      if (untilMs !== undefined) params.set('until', String(untilMs))
+      if (sinceMs === undefined && untilMs === undefined) params.set('limit', '500')
+      const query = params.toString() === '' ? '' : `?${params.toString()}`
       const payload = await apiGet<Record<string, unknown>>(`/api/gateway-mobile/read/audit${query}`)
-      const rangeLabel = exportRange === '24h' ? '24h' : exportRange === '7d' ? '7d' : 'all'
+      const rangeLabel = exportRange
+      const rangeText =
+        exportRange === '24h'
+          ? '最近 24 小时'
+          : exportRange === '7d'
+            ? '最近 7 天'
+            : exportRange === '30d'
+              ? '最近 30 天'
+              : exportRange === '90d'
+                ? '最近 90 天'
+                : exportRange === 'custom'
+                  ? `${customStart} ~ ${customEnd}`
+                  : '全部，最多 500 条'
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
@@ -1162,9 +1191,7 @@ function LogsTab(): ReactElement {
       anchor.click()
       anchor.remove()
       URL.revokeObjectURL(url)
-      setExportMessage(
-        `审计日志已导出（${exportRange === '24h' ? '最近 24 小时' : exportRange === '7d' ? '最近 7 天' : '全部，最多 500 条'}）`,
-      )
+      setExportMessage(`审计日志已导出（${rangeText}）`)
     } catch (cause) {
       setExportError(messageOf(cause))
     } finally {
@@ -1211,6 +1238,9 @@ function LogsTab(): ReactElement {
           >
             <option value="24h">最近 24 小时（不限条数）</option>
             <option value="7d">最近 7 天（不限条数）</option>
+            <option value="30d">最近 30 天（不限条数）</option>
+            <option value="90d">最近 90 天（不限条数）</option>
+            <option value="custom">自定义时间段（不限条数）</option>
             <option value="all">全部（最多 500 条）</option>
           </select>
           <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={exporting} onClick={() => void exportAudit()}>
@@ -1218,6 +1248,29 @@ function LogsTab(): ReactElement {
           </button>
         </div>
       </div>
+
+      {exportRange === 'custom' ? (
+        <div className="gwmb-form">
+          <label className="gwmb-form-row">
+            <span>开始时间</span>
+            <input
+              className="gwmb-input"
+              type="datetime-local"
+              value={customStart}
+              onChange={(event) => setCustomStart(event.target.value)}
+            />
+          </label>
+          <label className="gwmb-form-row">
+            <span>结束时间</span>
+            <input
+              className="gwmb-input"
+              type="datetime-local"
+              value={customEnd}
+              onChange={(event) => setCustomEnd(event.target.value)}
+            />
+          </label>
+        </div>
+      ) : null}
 
       {exportMessage ? <div className="gwmb-meta gwmb-ok">{exportMessage}</div> : null}
       {exportError ? <div className="gwmb-meta gwmb-bad">{exportError}</div> : null}

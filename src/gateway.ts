@@ -451,7 +451,7 @@ export class Gateway {
   }
 
   /** Read the audit trail through the logger's filtered query (file-backed). */
-  async queryAudit(options: { action?: string | undefined; since?: number | undefined; limit?: number | undefined } = {}): Promise<{
+  async queryAudit(options: { action?: string | undefined; since?: number | undefined; until?: number | undefined; limit?: number | undefined } = {}): Promise<{
     entries: LogEntry[]
     total: number
   }> {

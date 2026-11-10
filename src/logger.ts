@@ -40,6 +40,8 @@ export interface AuditQueryOptions {
   action?: string | undefined
   /** Only entries at or after this instant; epoch ms, ISO string or Date. */
   since?: number | string | Date | undefined
+  /** Only entries at or before this instant; epoch ms, ISO string or Date. */
+  until?: number | string | Date | undefined
   /** Return at most this many of the most recent matches. */
   limit?: number | undefined
 }
@@ -227,6 +229,13 @@ export class Logger {
       result = result.filter((entry) => {
         const at = Date.parse(entry.timestamp)
         return Number.isFinite(at) && at >= since
+      })
+    }
+    const until = sinceMs(options.until)
+    if (until !== undefined) {
+      result = result.filter((entry) => {
+        const at = Date.parse(entry.timestamp)
+        return Number.isFinite(at) && at <= until
       })
     }
     result.sort((left, right) => {

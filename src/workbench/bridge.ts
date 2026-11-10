@@ -433,16 +433,19 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
         const sinceRaw = params.get('since')
         const sinceValue = sinceRaw === null ? NaN : /^\d+$/.test(sinceRaw) ? Number(sinceRaw) : Date.parse(sinceRaw)
         const since = Number.isFinite(sinceValue) ? sinceValue : undefined
+        const untilRaw = params.get('until')
+        const untilValue = untilRaw === null ? NaN : /^\d+$/.test(untilRaw) ? Number(untilRaw) : Date.parse(untilRaw)
+        const until = Number.isFinite(untilValue) ? untilValue : undefined
         // A time-range export returns the whole window; only the capped "all"
         // query keeps the 500-entry limit.
         const limitRaw = Number(params.get('limit') ?? 500)
         const limit =
-          since !== undefined
+          since !== undefined || until !== undefined
             ? undefined
             : Number.isFinite(limitRaw)
               ? Math.min(500, Math.max(1, Math.floor(limitRaw)))
               : 500
-        return gateway.queryAudit({ action, since, limit }).then((payload) => json(payload))
+        return gateway.queryAudit({ action, since, until, limit }).then((payload) => json(payload))
       }),
     },
     {
