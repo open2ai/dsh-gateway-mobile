@@ -312,6 +312,8 @@ const STYLE = `
 .gwmb-form-wide { grid-column: 1 / -1; }
 .gwmb-form-row { display: flex; flex-direction: column; gap: 5px; font-size: 13px; min-width: 0; }
 .gwmb-form-row > span:first-child { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+.gwmb-setting { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 8px 16px; align-items: center; }
+.gwmb-setting-label { font-size: 13px; color: var(--dsw-alias-label-secondary); }
 .gwmb-input { box-sizing: border-box; width: 100%; font-size: 13px; font-family: inherit; padding: 6px 9px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .gwmb-input:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
 .gwmb-textarea { box-sizing: border-box; width: 100%; min-height: 84px; resize: vertical; font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 12px; padding: 8px 10px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
@@ -2177,74 +2179,74 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       </section>
 
       <section className="gwmb-card">
-        <h3>安全与维护</h3>
-        <div className="gwmb-form">
-          <div className="gwmb-form-row">
-            <span>密钥</span>
-            <div className="gwmb-meta">
-              {keys?.available
-                ? `活动 ${keys.activeKid || '—'} · 全部 ${keys.keyIds.join(', ') || '—'}`
-                : '密钥状态不可用'}
-            </div>
-            <div className="gwmb-actions">
-              <button
-                className="gwmb-btn"
-                type="button"
-                disabled={maintenanceBusy !== '' || !keys?.available}
-                onClick={() => void rotateKey()}
-              >
-                {maintenanceBusy === 'key' ? '轮换中…' : '轮换密钥'}
-              </button>
-            </div>
-          </div>
-
-          <div className="gwmb-form-row">
-            <span>独立管理台（兼容模式）</span>
-            <select
-              className="gwmb-select"
-              value={form.adminConsoleEnabled ? 'on' : 'off'}
-              onChange={(event) => update('adminConsoleEnabled', event.target.value === 'on')}
+        <h3>密钥</h3>
+        <div className="gwmb-inline">
+          <span className="gwmb-meta">
+            {keys?.available
+              ? `活动 ${keys.activeKid || '—'} · 全部 ${keys.keyIds.join(', ') || '—'}`
+              : '密钥状态不可用'}
+          </span>
+          <div className="gwmb-actions">
+            <button
+              className="gwmb-btn"
+              type="button"
+              disabled={maintenanceBusy !== '' || !keys?.available}
+              onClick={() => void rotateKey()}
             >
-              <option value="on">启用（本机可打开 /mobile/admin）</option>
-              <option value="off">禁用（只用工作台）</option>
-            </select>
-            <span className="gwmb-meta gwmb-muted">
-              禁用后独立页面与 /admin 跳转返回 404，回环 API 仍保留；工作台成为唯一管理入口。
-            </span>
-          </div>
-
-          <div className="gwmb-form-row gwmb-form-wide">
-            <span>OAuth 白名单</span>
-            <textarea
-              className="gwmb-textarea"
-              rows={3}
-              value={oauthText}
-              placeholder={'github:your-login\ngitee:your-login'}
-              onChange={(event) => {
-                setOAuthText(event.target.value)
-                setMessage('')
-              }}
-            />
-            <span className="gwmb-meta gwmb-muted">
-              每行一条 `github:login` 或 `gitee:login`；留空表示不限制，仅影响之后绑定的身份。
-            </span>
-            <div className="gwmb-actions">
-              <button
-                className="gwmb-btn"
-                type="button"
-                disabled={maintenanceBusy !== '' || oauth === null}
-                onClick={() => void saveOAuth()}
-              >
-                {maintenanceBusy === 'oauth' ? '保存中…' : '保存白名单'}
-              </button>
-            </div>
+              {maintenanceBusy === 'key' ? '轮换中…' : '轮换密钥'}
+            </button>
           </div>
         </div>
+        <div className="gwmb-meta gwmb-muted">轮换后新会话使用新密钥，旧会话仍可验证。</div>
+      </section>
 
+      <section className="gwmb-card">
+        <h3>OAuth 白名单</h3>
+        <textarea
+          className="gwmb-textarea"
+          rows={3}
+          value={oauthText}
+          placeholder={'github:your-login\ngitee:your-login'}
+          onChange={(event) => {
+            setOAuthText(event.target.value)
+            setMessage('')
+          }}
+        />
+        <span className="gwmb-meta gwmb-muted">
+          每行一条 `github:login` 或 `gitee:login`；留空表示不限制，仅影响之后绑定的身份。
+        </span>
+        <div className="gwmb-actions">
+          <button
+            className="gwmb-btn"
+            type="button"
+            disabled={maintenanceBusy !== '' || oauth === null}
+            onClick={() => void saveOAuth()}
+          >
+            {maintenanceBusy === 'oauth' ? '保存中…' : '保存白名单'}
+          </button>
+        </div>
         <div className="gwmb-meta">
           {oauth
             ? `已启用 provider：${oauth.providers.join(', ') || '无'}${oauth.requireOAuth ? ' · 强制绑定' : ''}`
             : 'OAuth 状态不可用'}
+        </div>
+      </section>
+
+      <section className="gwmb-card">
+        <h3>独立管理台</h3>
+        <div className="gwmb-setting">
+          <span className="gwmb-setting-label">兼容模式</span>
+          <select
+            className="gwmb-select"
+            value={form.adminConsoleEnabled ? 'on' : 'off'}
+            onChange={(event) => update('adminConsoleEnabled', event.target.value === 'on')}
+          >
+            <option value="on">启用（本机可打开 /mobile/admin）</option>
+            <option value="off">禁用（只用工作台）</option>
+          </select>
+        </div>
+        <div className="gwmb-meta gwmb-muted">
+          禁用后独立页面与 /admin 跳转返回 404，回环 API 仍保留；工作台成为唯一管理入口。
         </div>
       </section>
 
@@ -2261,7 +2263,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
 
       <div className="gwmb-meta gwmb-muted">
-        修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。独立管理台可在「安全与维护」中关闭，之后工作台即为唯一管理入口。
+        修改立即生效并持久化，无需重启 DSH；独立管理台关闭后，工作台即为唯一管理入口。
       </div>
 
       {confirmState ? (
