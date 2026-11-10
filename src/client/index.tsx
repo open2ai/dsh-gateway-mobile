@@ -907,93 +907,114 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const levels = ['debug', 'info', 'warn', 'error']
 
   return (
-    <section className="gwmb-card">
-      <h3>设置</h3>
-      <div className="gwmb-meta">插件版本 {version || props.pluginVersion || '—'}</div>
-      <div className="gwmb-meta">修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。</div>
+    <>
+      <section className="gwmb-card">
+        <div className="gwmb-inline">
+          <h3>插件版本</h3>
+          <span className="gwmb-inline-value">{version || props.pluginVersion || '—'}</span>
+        </div>
+        <div className="gwmb-meta">dsh-gateway-mobile · DSH Web UI 工作台</div>
+      </section>
 
-      <div className="gwmb-form">
-        <label className="gwmb-form-row">
-          <span>设备会话时长（天）</span>
-          <input
-            className="gwmb-input"
-            type="number"
-            min="1"
-            max={sessionMaxDays}
-            value={form.sessionDays}
-            onChange={(event) => update('sessionDays', event.target.value)}
-          />
-          <span className="gwmb-meta gwmb-muted">最短约 {sessionMinMinutes} 分钟，最长 {sessionMaxDays} 天</span>
-        </label>
+      <section className="gwmb-card">
+        <h3>隧道与代理</h3>
+        <div className="gwmb-form">
+          <label className="gwmb-form-row">
+            <span>隧道开关</span>
+            <select
+              className="gwmb-select"
+              value={form.tunnelEnabled ? 'on' : 'off'}
+              onChange={(event) => update('tunnelEnabled', event.target.value === 'on')}
+            >
+              <option value="on">启用（Quick/Named Tunnel）</option>
+              <option value="off">禁用（仅回环访问）</option>
+            </select>
+          </label>
+          <label className="gwmb-form-row">
+            <span>DSH 代理超时（毫秒）</span>
+            <input
+              className="gwmb-input"
+              type="number"
+              min="1000"
+              step="1000"
+              placeholder="留空使用默认值"
+              value={form.proxyTimeoutMs}
+              onChange={(event) => update('proxyTimeoutMs', event.target.value)}
+            />
+          </label>
+        </div>
+      </section>
 
-        <label className="gwmb-form-row">
-          <span>配对码有效期（分钟）</span>
-          <input
-            className="gwmb-input"
-            type="number"
-            min={pairingMinMinutes}
-            max={pairingMaxMinutes}
-            value={form.pairingMinutes}
-            onChange={(event) => update('pairingMinutes', event.target.value)}
-          />
-          <span className="gwmb-meta gwmb-muted">{pairingMinMinutes}–{pairingMaxMinutes} 分钟</span>
-        </label>
+      <section className="gwmb-card">
+        <h3>认证与配对</h3>
+        <div className="gwmb-form">
+          <label className="gwmb-form-row">
+            <span>设备会话时长（天）</span>
+            <input
+              className="gwmb-input"
+              type="number"
+              min="1"
+              max={sessionMaxDays}
+              value={form.sessionDays}
+              onChange={(event) => update('sessionDays', event.target.value)}
+            />
+            <span className="gwmb-meta gwmb-muted">最短约 {sessionMinMinutes} 分钟，最长 {sessionMaxDays} 天</span>
+          </label>
+          <label className="gwmb-form-row">
+            <span>配对码有效期（分钟）</span>
+            <input
+              className="gwmb-input"
+              type="number"
+              min={pairingMinMinutes}
+              max={pairingMaxMinutes}
+              value={form.pairingMinutes}
+              onChange={(event) => update('pairingMinutes', event.target.value)}
+            />
+            <span className="gwmb-meta gwmb-muted">{pairingMinMinutes}–{pairingMaxMinutes} 分钟</span>
+          </label>
+        </div>
+      </section>
 
-        <label className="gwmb-form-row">
-          <span>隧道开关</span>
-          <select
-            className="gwmb-select"
-            value={form.tunnelEnabled ? 'on' : 'off'}
-            onChange={(event) => update('tunnelEnabled', event.target.value === 'on')}
-          >
-            <option value="on">启用（Quick/Named Tunnel）</option>
-            <option value="off">禁用（仅回环访问）</option>
-          </select>
-        </label>
+      <section className="gwmb-card">
+        <h3>微信</h3>
+        <div className="gwmb-form">
+          <label className="gwmb-form-row">
+            <span>微信通道</span>
+            <select
+              className="gwmb-select"
+              value={form.weixinEnabled ? 'on' : 'off'}
+              onChange={(event) => update('weixinEnabled', event.target.value === 'on')}
+            >
+              <option value="on">启用</option>
+              <option value="off">禁用</option>
+            </select>
+          </label>
+        </div>
+        <div className="gwmb-meta gwmb-muted">微信扫码登录、审批与通知策略在「独立管理台 → 微信」中维护。</div>
+      </section>
 
-        <label className="gwmb-form-row">
-          <span>微信通道</span>
-          <select
-            className="gwmb-select"
-            value={form.weixinEnabled ? 'on' : 'off'}
-            onChange={(event) => update('weixinEnabled', event.target.value === 'on')}
-          >
-            <option value="on">启用</option>
-            <option value="off">禁用</option>
-          </select>
-        </label>
-
-        <label className="gwmb-form-row">
-          <span>日志级别</span>
-          <select
-            className="gwmb-select"
-            value={form.logLevel}
-            onChange={(event) => update('logLevel', event.target.value)}
-          >
-            {levels.map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="gwmb-form-row">
-          <span>DSH 代理超时（毫秒）</span>
-          <input
-            className="gwmb-input"
-            type="number"
-            min="1000"
-            step="1000"
-            placeholder="留空使用默认值"
-            value={form.proxyTimeoutMs}
-            onChange={(event) => update('proxyTimeoutMs', event.target.value)}
-          />
-        </label>
-      </div>
+      <section className="gwmb-card">
+        <h3>日志</h3>
+        <div className="gwmb-form">
+          <label className="gwmb-form-row">
+            <span>日志级别</span>
+            <select
+              className="gwmb-select"
+              value={form.logLevel}
+              onChange={(event) => update('logLevel', event.target.value)}
+            >
+              {levels.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
 
       <div className="gwmb-actions">
-        <button className="gwmb-btn" type="button" disabled={saving} onClick={() => void save()}>
+        <button className="gwmb-btn gwmb-btn-primary" type="button" disabled={saving} onClick={() => void save()}>
           {saving ? '保存中…' : '保存设置'}
         </button>
         <button className="gwmb-btn" type="button" disabled={saving} onClick={() => void load()}>
@@ -1005,9 +1026,10 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
 
       <div className="gwmb-meta gwmb-muted">
-        密钥轮换、审计导出、OAuth 白名单等高级维护仍在独立管理台完成。
+        修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。密钥轮换、审计导出、OAuth
+        白名单等高级维护仍在独立管理台完成。
       </div>
-    </section>
+    </>
   )
 }
 
