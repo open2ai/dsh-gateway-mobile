@@ -2,6 +2,20 @@
 
 [English](./CHANGELOG.md) | [中文](./CHANGELOG.zh.md)
 
+## 0.2.0-next.0 - 2026-11-10
+
+工作台预览版：管理台能力开始进入 DSH Web UI。
+
+- 新增 DSH 浏览器半侧（`dsh.client`、`exports["./client"]`、`lib/client.js`），由新增的
+  `scripts/build-client.mjs` 构建；注册整页 `main` 面板 `gateway-mobile-workbench` 和左侧栏入口，
+  与官方 Plugins/Schedules 页同构。
+- 在 DSH Connection 服务上注册宿主桥路由（`ctx.connection.fetch.register`），首个接口为
+  `GET /api/gateway-mobile/read/ping`：同源、使用 DSH 浏览器会话认证，不再回环 HTTP 跳回网关。
+- 工作台页只读展示网关/隧道/设备/能力状态，并保留“打开独立管理台”“打开手机入口”链接。手机可打开
+  同一页面但保持只读；配对码、隧道启停、微信登录/审批、设置与密钥轮换仍仅限本机（管理操作在后续阶段加入）。
+- 版本号升级到 `0.2.0-next.0`，用于 npm `next` dist-tag；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`。
+- 执行 `npm run build` 后需要重启一次 `dsh web`（DSH 会缓存客户端 bundle 清单直到重启）。
+
 ## 0.1.4 - 2026-11-09
 
 本版本不升版本号，集中处理长期运行的安全与可维护性；所有改动保持现有 API 向后兼容（只新增字段/端点）。

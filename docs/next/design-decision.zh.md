@@ -1,9 +1,15 @@
 # 0.2.0-next 设计决策：把网关监控台变成 DSH 内“手机网关工作台”
 
-> 状态：**分析完成，待拍板**（本文只做决策，不包含实现）。
+> 状态：**已拍板，Phase 0 已实现**（2026-11-10）。剩余 Phase 1/2 待排期。
 > 分支：`next`（从 `main@8783645`，插件 0.1.4 切出）。
 > 依据：本目录两份调研文档 —— [`research-plugin-inventory.zh.md`](./research-plugin-inventory.zh.md)（插件现状/安全/接口）、[`research-dsh-integration.zh.md`](./research-dsh-integration.zh.md)（DSH 客户端集成/构建/通信/槽位）。
 > DSH 基线：**0.2.2-rc.1（安装态，唯一权威）**；源码参考 v0.2.1-rc.5 仅用于理解机制。
+>
+> **已确认决策**：方案 A（`main` 整页 + `sidebar.panellist` 左栏入口，`PANEL_ID = "gateway-mobile-workbench"`）；版本 `0.2.0-next.0` + npm `next` dist-tag；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`；手机只读，微信扫码登录/审批仅本机。
+>
+> **Phase 0 已落地文件**：`scripts/build-client.mjs`、`tsconfig.client.json`、`src/client/index.tsx`、`src/workbench/bridge.ts`、`test/workbench.test.js`；`package.json` 增加 `dsh.client` / `exports["./client"]` / 构建脚本；`src/index.ts` 接入桥路由；`tsconfig.json` 排除 `src/client`。
+>
+> **启用步骤**：`npm run build` 后重启一次 `dsh web`（DSH 缓存客户端 bundle 清单直到重启）。重启会同时重连 Quick Tunnel（公网域名可能变化，手机需重新配对）。
 
 ---
 
@@ -178,11 +184,11 @@ DSH Web UI（3080 / 隧道）
 
 ---
 
-## 8. 待拍板事项
+## 8. 已拍板事项（2026-11-10）
 
-1. **形态**：按推荐方案 A（`main` 整页 + 左栏图标）推进？还是先做保守的 `settings.section` 版本？
-2. **手机权限**：确认“手机只读、微信扫码登录/审批仅本机”的边界？还是希望手机也能做低危操作（如切换隧道开关）？
-3. **版本**：确认 `0.2.0-next.0` + npm `next` dist-tag？`engines.dsh` 用范围还是继续精确锁 `0.2.2-rc.1`？
-4. **节奏**：现在开始 Phase 0 + Phase 1（约 3–4 人日），还是只保留本决策文档等排期？
+1. **形态**：✅ 方案 A —— `main` 整页面板 + `sidebar.panellist` 左栏入口，`PANEL_ID = "gateway-mobile-workbench"`。
+2. **手机权限**：✅ 手机只读；配对码/二维码、隧道启停、微信扫码登录/审批、设置写入、密钥轮换仅本机。
+3. **版本**：✅ `0.2.0-next.0` + npm `next` dist-tag；`engines.dsh` **继续精确锁定** `0.2.2-rc.1`（不改为范围）。
+4. **节奏**：✅ Phase 0 已实现；Phase 1（配对/设备/日志只读 MVP）与 Phase 2（本机管理操作）按此文档继续。
 
-> 决策后本文升级为 `docs/next/implementation-plan.zh.md`（含文件级任务拆解、接口 DTO、测试清单），并按阶段实现。
+> 后续把 Phase 1/2 拆成 `docs/next/implementation-plan.zh.md`（文件级任务、接口 DTO、测试清单），并按阶段实现。

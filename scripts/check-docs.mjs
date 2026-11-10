@@ -104,8 +104,8 @@ else add('package.json engines.node', 'ok', nodeRange, 'package.json')
 
 // --- README status / requirements ------------------------------------------------
 const readmeFiles = [
-  { file: 'README.md', statusRegex: /\bStatus:\s*\*\*v?(\d+\.\d+\.\d+)\*\*/i, label: 'README.md Status' },
-  { file: 'README.zh.md', statusRegex: /状态[:：]\s*\*\*v?(\d+\.\d+\.\d+)\*\*/, label: 'README.zh.md 状态' },
+  { file: 'README.md', statusRegex: /\bStatus:\s*\*\*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\*\*/i, label: 'README.md Status' },
+  { file: 'README.zh.md', statusRegex: /状态[:：]\s*\*\*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\*\*/, label: 'README.zh.md 状态' },
 ]
 for (const entry of readmeFiles) {
   const text = requireDoc(entry.file)
@@ -133,7 +133,7 @@ for (const entry of readmeFiles) {
 for (const file of ['CHANGELOG.md', 'CHANGELOG.zh.md']) {
   const text = requireDoc(file)
   if (text === null) continue
-  const match = /^##\s+v?(\d+\.\d+\.\d+)/m.exec(text)
+  const match = /^##\s+v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/m.exec(text)
   if (!match) add(`${file} first version`, 'warn', 'no "## X.Y.Z" heading found', file)
   else if (match[1] !== pluginVersion) {
     add(`${file} first version`, 'fail', `latest heading ${match[1]} != package.json ${pluginVersion}`, file)
@@ -151,7 +151,7 @@ for (const file of ['docs/DETAIL.md', 'docs/DETAIL.zh.md']) {
   checkVersions(
     `${file} plugin reference`,
     file,
-    collect(text, /(?:插件|plugin)\s*[`"*]*v?(\d+\.\d+\.\d+)/gi),
+    collect(text, /(?:插件|plugin)\s*[`"*]*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/gi),
     pluginVersion,
     'plugin version',
   )
@@ -177,14 +177,14 @@ for (const file of ['docs/architecture-flow.md', 'docs/deviations.md']) {
   checkVersions(
     `${file} plugin version refs`,
     file,
-    collect(text, /\b(0\.1\.\d+)\b/g),
+    collect(text, /(?:Plugin version|插件)[：:\s]*`?v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)`?/gi),
     pluginVersion,
     'plugin version',
   )
   checkVersions(
     `${file} DSH version refs`,
     file,
-    collect(text, /\b(0\.2\.\d+(?:-[0-9A-Za-z.]+)?)\b/g),
+    collect(text, /\b(0\.2\.\d+(?:-[0-9A-Za-z.]+)?)\b/g).filter((token) => token !== pluginVersion),
     dshVersion,
     'DSH version',
   )

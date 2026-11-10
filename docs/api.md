@@ -64,7 +64,7 @@ limited response adds `Retry-After`.
 `GET /health` (public), also available as `/mobile/api/v1/health`:
 
 ```json
-{ "code": 0, "data": { "ok": true, "version": "0.1.4", "time": "2026-10-24T07:00:00.000Z" } }
+{ "code": 0, "data": { "ok": true, "version": "0.2.0-next.0", "time": "2026-10-24T07:00:00.000Z" } }
 ```
 
 `GET /health?deep=1` (also `/mobile/api/v1/admin/health`, loopback) returns per-component
@@ -72,7 +72,7 @@ readiness and answers 503 when a required component is down:
 
 ```json
 { "code": 0, "data": {
-  "ok": true, "version": "0.1.4", "startedAt": "…", "uptime": 42, "serverTime": "…",
+  "ok": true, "version": "0.2.0-next.0", "startedAt": "…", "uptime": 42, "serverTime": "…",
   "checks": [
     { "name": "gateway", "ok": true, "data": { "port": 3081 } },
     { "name": "storage", "ok": true, "data": { "dataDir": "…" } },
@@ -269,7 +269,7 @@ hash-bound identity recorded at approval time; raw WeChat user ids are never per
 - Server sends a `ready` message:
 
 ```json
-{ "type": "ready", "payload": { "protocolVersion": 1, "deviceId": "dev_…", "gatewayVersion": "0.1.4", "publicBase": "…", "tunnel": {} } }
+{ "type": "ready", "payload": { "protocolVersion": 1, "deviceId": "dev_…", "gatewayVersion": "0.2.0-next.0", "publicBase": "…", "tunnel": {} } }
 ```
 
 - Supported inbound types: `ping` → `pong`; `status.get` → `gateway.status`.

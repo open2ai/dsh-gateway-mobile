@@ -2,6 +2,23 @@
 
 [English](./CHANGELOG.md) | [中文](./CHANGELOG.zh.md)
 
+## 0.2.0-next.0 - 2026-11-10
+
+Workbench preview: the gateway console becomes a page inside the DSH Web UI.
+
+- Adds a DSH browser half (`dsh.client`, `exports["./client"]`, `lib/client.js`) built by the new
+  `scripts/build-client.mjs`; it registers a full-page `main` panel `gateway-mobile-workbench` plus
+  a left-sidebar entry, mirroring the official Plugins/Schedules pages.
+- Adds host bridge routes on the DSH Connection service (`ctx.connection.fetch.register`), starting
+  with `GET /api/gateway-mobile/read/ping`: same-origin, authenticated by DSH's browser session, and
+  no loopback HTTP hop back into the gateway.
+- The workbench page shows gateway/tunnel/device/capability status read-only and keeps links to the
+  standalone console and the public phone entry. Paired phones can open the same page but stay
+  read-only; pairing codes, tunnel controls, WeChat login/approval, settings and key rotation remain
+  loopback-only (admin actions arrive in later phases).
+- Version bumped to `0.2.0-next.0` for the npm `next` dist-tag; `engines.dsh` stays pinned to `0.2.2-rc.1`.
+- Activation needs one `dsh web` restart after `npm run build` (DSH caches client bundle manifests until restart).
+
 ## 0.1.4 - 2026-11-09
 
 No version bump: a hardening/maintainability pass that keeps every existing API

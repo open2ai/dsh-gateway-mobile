@@ -1,11 +1,12 @@
 {
   "name": "dsh-gateway-mobile",
-  "version": "0.1.4",
+  "version": "0.2.0-next.0",
   "description": "Secure DSH mobile and WeChat gateway: Cloudflare Quick Tunnel, one-time pairing, WeChat ClawBot/iLink chat, approvals, questions, and notifications.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
@@ -28,6 +29,9 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "engines": {
@@ -38,11 +42,13 @@
     "qrcode": "^1.5.4"
   },
   "scripts": {
-    "build": "npm run build:server && npm run build:web",
+    "build": "npm run build:client && npm run build:server && npm run build:web",
+    "build:client": "node scripts/build-client.mjs",
     "build:server": "tsc -p tsconfig.json",
     "build:web": "node scripts/build-web.mjs",
-    "typecheck": "npm run typecheck:server && npm run typecheck:web",
+    "typecheck": "npm run typecheck:server && npm run typecheck:client && npm run typecheck:web",
     "typecheck:server": "tsc -p tsconfig.json --noEmit",
+    "typecheck:client": "tsc -p tsconfig.client.json",
     "typecheck:web": "tsc -p web/tsconfig.json",
     "test": "npm run build && node --test test/*.test.js",
     "test:integration": "npm run build && node scripts/integration-check.mjs",
@@ -66,7 +72,11 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/qrcode": "^1.5.6",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
     "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^7.0.2",
     "ws": "^8.22.0"
   }

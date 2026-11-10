@@ -2,7 +2,7 @@
 
 [English](./architecture-flow.md) | [中文](./architecture-flow.zh.md)
 
-> Plugin version: `0.1.4`; verified against DSH `0.2.2-rc.1`.  
+> Plugin version: `0.2.0-next.0`; verified against DSH `0.2.2-rc.1`.  
 > This document describes the current implementation and does not include unimplemented plans.
 
 ## 1. System context

@@ -29,6 +29,7 @@ import { WeixinBridge } from './weixin-bridge.js'
 import { WeixinNotifier } from './weixin-notifier.js'
 import type { SessionControllerLike, WeixinApprovalOutcome } from './weixin-bridge.js'
 import { errorMessage } from './util.js'
+import { registerWorkbenchBridge } from './workbench/bridge.js'
 
 export const name = 'dsh-gateway-mobile'
 /**
@@ -49,6 +50,10 @@ export interface CordisContext {
   }
   connection: {
     authenticatedUrl(origin: string): Promise<string> | string
+    /** Exact Fetch routes below DSH's `/api` channel (workbench bridge). */
+    fetch: {
+      register(route: import('./workbench/bridge.js').WorkbenchFetchRoute): () => Promise<void>
+    }
   }
   /** Cordis reflection accessor; used to probe optional services without requiring them. */
   get?<T = unknown>(name: string, strict?: boolean): T | undefined
@@ -239,6 +244,13 @@ export async function apply(ctx: CordisContext, rawConfig?: unknown): Promise<vo
 
   logger.info(`Admin console: ${gateway.origin}/admin`)
   logger.info(`Pairing code: ${maskPairingCode(pairing.describe().formatted)} (valid ${config.auth.pairingTokenExpiry}s)`)
+
+  // DSH Web UI workbench: same-process bridge routes, no loopback HTTP hop.
+  if (registerWorkbenchBridge(ctx, gateway, version)) {
+    logger.info('Workbench bridge: /api/gateway-mobile/read/ping')
+  } else {
+    logger.warn('Workbench bridge unavailable: this DSH host does not expose ctx.connection.fetch; the standalone console still works')
+  }
   if (config.weixin.enabled) {
     void weixinBridge
       .start()

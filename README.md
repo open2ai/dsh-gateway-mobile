@@ -4,7 +4,7 @@
 
 A DSH host plugin that exposes your local `dsh web` session through an outbound **Cloudflare Quick Tunnel**, with one-time phone pairing and an optional **WeChat ClawBot/iLink** connection. DSH keeps listening on loopback; the plugin runs its own loopback gateway (default `127.0.0.1:3081`) and never exposes DSH's cookie.
 
-Status: **v0.1.4**. Quick Tunnel is a Cloudflare testing/development facility.
+Status: **v0.2.0-next.0** (workbench preview). Quick Tunnel is a Cloudflare testing/development facility.
 
 ## Quick start
 
@@ -42,6 +42,7 @@ WeChat handles an approval or question only while it has a valid inbound context
 - WeChat approvals, questions, plan review, and timed-question late answers
 - Cross-session completion notifications with merge/cooldown/rate limits
 - Admin console: overview (status chips + KPI/quick actions/request trend chart with 7/14/30-day switch), pairing, WeChat, devices, logs, settings, help with diagnostics
+- **DSH Web UI workbench (preview)** — a “手机网关” page and left-sidebar entry inside DSH Web UI (status overview + links to the standalone console), backed by same-origin `/api/gateway-mobile/read/*` routes; the standalone console stays available
 - `/health?deep=1` readiness, filtered audit export, key rotation, and a capability matrix
 - `npm run doctor` environment check and `npm run hmr-check` reload smoke test
 - Mobile opens the official DSH Web UI
