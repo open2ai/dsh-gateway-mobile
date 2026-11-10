@@ -276,6 +276,21 @@ const STYLE = `
 .gwmb-status-bad { color: var(--dsw-alias-state-error-primary); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
 .gwmb-access-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: start; }
 .gwmb-access-name { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+/* ---- alignment, spacing and hierarchy ---- */
+.gwmb-card > h3 { font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--dsw-alias-label-primary); margin: 0 0 2px; }
+.gwmb-info-head { justify-content: space-between; align-items: center; width: 100%; }
+.gwmb-info-head h3 { margin: 0; }
+.gwmb-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; align-items: start; }
+@media (max-width: 720px) { .gwmb-form { grid-template-columns: minmax(0, 1fr); } }
+.gwmb-form-row > span:first-child { font-size: 12px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
+.gwmb-form-row > .gwmb-meta { line-height: 1.5; }
+.gwmb-form-row > .gwmb-input, .gwmb-form-row > .gwmb-select, .gwmb-form-row > .gwmb-textarea { width: 100%; }
+.gwmb-footer-actions { margin-top: 2px; padding-top: 12px; border-top: 1px solid var(--dsw-alias-border-l1); }
+.gwmb-grid { align-items: stretch; }
+.gwmb-inline { align-items: center; }
+.gwmb-card { gap: 10px; }
+.gwmb-row { gap: 10px; }
+.gwmb-note { line-height: 1.6; }
 .gwmb-modal-mask { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.45); }
 .gwmb-modal { box-sizing: border-box; width: min(420px, 100%); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent); padding: 18px; display: flex; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
 .gwmb-modal h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--dsw-alias-label-primary); text-transform: none; letter-spacing: 0; }
@@ -404,7 +419,7 @@ function formatShortTime(value: string): string {
 function InfoCard(props: { title: string; value?: string; tone?: string; children?: ReactNode }): ReactElement {
   return (
     <section className="gwmb-card">
-      <div className="gwmb-inline">
+      <div className="gwmb-inline gwmb-info-head">
         <h3>{props.title}</h3>
         {props.value !== undefined ? (
           <span className={`gwmb-inline-value ${props.tone ?? ''}`}>{props.value}</span>
@@ -2159,23 +2174,18 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       </section>
 
       <section className="gwmb-card">
-        <h3>日志</h3>
-        <div className="gwmb-form">
-          <label className="gwmb-form-row">
-            <span>日志级别</span>
-            <select
-              className="gwmb-select"
-              value={form.logLevel}
-              onChange={(event) => update('logLevel', event.target.value)}
-            >
-              {levels.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
-          </label>
+        <h3>日志级别</h3>
+        <div className="gwmb-setting">
+          <span className="gwmb-setting-label">运行日志级别</span>
+          <select className="gwmb-select" value={form.logLevel} onChange={(event) => update('logLevel', event.target.value)}>
+            {levels.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
         </div>
+        <div className="gwmb-meta gwmb-muted">修改后立即生效，用于控制服务端与控制台输出的详细程度。</div>
       </section>
 
       <section className="gwmb-card">
@@ -2250,7 +2260,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
         </div>
       </section>
 
-      <div className="gwmb-actions">
+      <div className="gwmb-actions gwmb-footer-actions">
         <button className="gwmb-btn gwmb-btn-primary" type="button" disabled={saving} onClick={() => void save()}>
           {saving ? '保存中…' : '保存设置'}
         </button>
