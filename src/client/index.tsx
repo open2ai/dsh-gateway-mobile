@@ -1062,6 +1062,8 @@ function LogsTab(): ReactElement {
   const [logs, setLogs] = useState<LogItem[] | null>(null)
   const [level, setLevel] = useState('all')
   const [error, setError] = useState('')
+  const [approvals, setApprovals] = useState<unknown[] | null>(null)
+  const [approvalsError, setApprovalsError] = useState('')
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -1073,11 +1075,22 @@ function LogsTab(): ReactElement {
     }
   }, [])
 
+  const loadApprovals = useCallback(async (): Promise<void> => {
+    try {
+      const payload = await apiGet<{ items: unknown[] }>('/api/gateway-mobile/read/weixin/approvals')
+      setApprovals(payload.items)
+      setApprovalsError('')
+    } catch (cause) {
+      setApprovalsError(messageOf(cause))
+    }
+  }, [])
+
   useEffect(() => {
     void load()
+    void loadApprovals()
     const timer = window.setInterval(() => void load(), 5000)
     return () => window.clearInterval(timer)
-  }, [load])
+  }, [load, loadApprovals])
 
   if (error) {
     return (
@@ -1091,32 +1104,52 @@ function LogsTab(): ReactElement {
   const visible = (logs ?? []).filter((item) => level === 'all' || item.level === level)
 
   return (
-    <section className="gwmb-card">
-      <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
-        <h3>最近日志（{visible.length}）</h3>
-        <select className="gwmb-select" value={level} onChange={(event) => setLevel(event.target.value)}>
-          {levels.map((item) => (
-            <option key={item} value={item}>
-              {item === 'all' ? '全部级别' : item}
-            </option>
+    <>
+      <section className="gwmb-card">
+        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
+          <h3>最近日志（{visible.length}）</h3>
+          <select className="gwmb-select" value={level} onChange={(event) => setLevel(event.target.value)}>
+            {levels.map((item) => (
+              <option key={item} value={item}>
+                {item === 'all' ? '全部级别' : item}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          {visible.map((item, index) => (
+            <div className="gwmb-log" key={`${item.timestamp}-${index}`}>
+              <span className="gwmb-log-time">{formatTime(item.timestamp)}</span>
+              <span className={item.level === 'error' ? 'gwmb-bad' : item.level === 'warn' ? 'gwmb-warn' : 'gwmb-muted'}>
+                {item.level}
+              </span>
+              <span className="gwmb-log-msg">{item.message}</span>
+            </div>
           ))}
-        </select>
-      </div>
-      <div>
-        {visible.map((item, index) => (
-          <div className="gwmb-log" key={`${item.timestamp}-${index}`}>
-            <span className="gwmb-log-time">{formatTime(item.timestamp)}</span>
-            <span className={item.level === 'error' ? 'gwmb-bad' : item.level === 'warn' ? 'gwmb-warn' : 'gwmb-muted'}>
-              {item.level}
-            </span>
-            <span className="gwmb-log-msg">{item.message}</span>
-          </div>
-        ))}
-        {logs !== null && visible.length === 0 ? <div className="gwmb-meta">暂无日志。</div> : null}
-        {logs === null ? <div className="gwmb-meta">正在读取日志…</div> : null}
-      </div>
-      <div className="gwmb-meta">审计导出请在独立管理台完成。</div>
-    </section>
+          {logs !== null && visible.length === 0 ? <div className="gwmb-meta">暂无日志。</div> : null}
+          {logs === null ? <div className="gwmb-meta">正在读取日志…</div> : null}
+        </div>
+        <div className="gwmb-meta">审计导出在「设置 → 安全与维护」中完成。</div>
+      </section>
+
+      <section className="gwmb-card">
+        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
+          <h3>微信审批历史（{approvals?.length ?? 0}）</h3>
+          <button className="gwmb-btn gwmb-btn-sm" type="button" onClick={() => void loadApprovals()}>
+            刷新
+          </button>
+        </div>
+        {approvalsError ? <div className="gwmb-meta gwmb-bad">{approvalsError}</div> : null}
+        <div className="gwmb-code" style={{ maxHeight: 220, overflowY: 'auto' }}>
+          {approvals === null
+            ? '正在读取审批历史…'
+            : approvals.length === 0
+              ? '暂无审批记录'
+              : approvals.map((item, index) => <div key={index}>{JSON.stringify(item)}</div>)}
+        </div>
+        <div className="gwmb-meta gwmb-muted">审批历史与微信审批、提问、计划审核相关；手机端不显示。</div>
+      </section>
+    </>
   )
 }
 
@@ -1214,7 +1247,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const [maintenanceBusy, setMaintenanceBusy] = useState('')
   const [loginStatus, setLoginStatus] = useState<WeixinLoginView | null>(null)
   const [loginBusy, setLoginBusy] = useState(false)
-  const [approvals, setApprovals] = useState<unknown[] | null>(null)
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
   const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
   const [version, setVersion] = useState('')
@@ -1470,16 +1502,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     })
   }
 
-  const loadApprovals = async (): Promise<void> => {
-    setError('')
-    try {
-      const payload = await apiGet<{ items: unknown[] }>('/api/gateway-mobile/read/weixin/approvals')
-      setApprovals(payload.items)
-    } catch (cause) {
-      setError(messageOf(cause))
-    }
-  }
-
   if (error && form === null) {
     return (
       <ErrorCard title="设置不可用">
@@ -1690,20 +1712,8 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
             </div>
           </div>
         ) : null}
-        <div className="gwmb-actions">
-          <button className="gwmb-btn" type="button" onClick={() => void loadApprovals()}>
-            加载审批历史
-          </button>
-        </div>
-        {approvals ? (
-          <div className="gwmb-meta gwmb-code" style={{ maxHeight: 160, overflowY: 'auto' }}>
-            {approvals.length === 0
-              ? '暂无审批记录'
-              : approvals.map((item, index) => <div key={index}>{JSON.stringify(item)}</div>)}
-          </div>
-        ) : null}
         <div className="gwmb-meta gwmb-muted">
-          扫码登录与审批已迁移到工作台，通知策略保存后立即生效；独立管理台仍保留作为兼容入口。
+          扫码登录与 pending 审批确认在此完成；审批历史在「日志」页签查看；通知策略保存后立即生效。独立管理台仍保留作为兼容入口。
         </div>
       </section>
 
