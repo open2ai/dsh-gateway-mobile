@@ -241,6 +241,39 @@ const STYLE = `
 .gwmb-cal-day-inrange:hover { background: color-mix(in srgb, var(--dsw-alias-button-primary-fill) 22%, transparent); }
 .gwmb-cal-day-today { box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l3); }
 .gwmb-cal-day:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
+/* ---- visual polish pass: spacing, pills, surfaces, tables ---- */
+.gwmb-page { padding: 24px clamp(16px, 4vw, 40px) 16px; gap: 16px; }
+.gwmb-title { font-size: 24px; letter-spacing: -0.01em; }
+.gwmb-sub { margin-top: 4px; }
+.gwmb-head { align-items: center; }
+.gwmb-btn { height: 30px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.gwmb-btn:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); border-color: var(--dsw-alias-border-l2); }
+.gwmb-btn:disabled { opacity: .45; }
+.gwmb-btn-sm { height: 26px; padding: 0 10px; font-size: 12px; }
+.gwmb-btn-primary { background: var(--dsw-alias-button-primary-fill); border-color: transparent; color: var(--dsw-alias-label-primary-foreground); }
+.gwmb-btn-primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
+.gwmb-btn-danger { background: var(--dsw-alias-state-error-primary); border-color: transparent; color: #fff; }
+.gwmb-btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+.gwmb-tabs { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg, 16px); background: var(--dsw-alias-bg-layer-1); }
+.gwmb-tab { height: 28px; padding: 0 14px; border-radius: var(--dsw-radius-md, 10px); font-size: 13px; color: var(--dsw-alias-label-secondary); display: inline-flex; align-items: center; }
+.gwmb-tab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.gwmb-tab-active, .gwmb-tab-active:hover { background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-primary); font-weight: 600; }
+.gwmb-card { padding: 16px 18px; gap: 8px; }
+.gwmb-card h3 { letter-spacing: .05em; }
+.gwmb-inline-value { font-size: 20px; }
+.gwmb-input, .gwmb-select, .gwmb-textarea { min-height: 32px; border-color: var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); }
+.gwmb-input:hover:not(:disabled), .gwmb-select:hover:not(:disabled), .gwmb-textarea:hover { border-color: var(--dsw-alias-border-l2); }
+.gwmb-table th { padding: 9px 12px; background: var(--dsw-alias-bg-layer-2); }
+.gwmb-table td { padding: 10px 12px; }
+.gwmb-table tbody tr:hover td { background: var(--dsw-alias-interactive-bg-hover); }
+.gwmb-log { padding: 6px 8px; border-radius: var(--dsw-radius-sm, 6px); }
+.gwmb-log:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.gwmb-link-field { padding: 10px 12px; gap: 6px; }
+.gwmb-modal { padding: 20px; gap: 14px; width: min(440px, 100%); }
+.gwmb-status { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; line-height: 18px; }
+.gwmb-status-ok { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent); }
+.gwmb-status-warn { color: var(--dsw-alias-state-warn-primary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
+.gwmb-status-bad { color: var(--dsw-alias-state-error-primary); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent); }
 .gwmb-modal-mask { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.45); }
 .gwmb-modal { box-sizing: border-box; width: min(420px, 100%); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent); padding: 18px; display: flex; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
 .gwmb-modal h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--dsw-alias-label-primary); text-transform: none; letter-spacing: 0; }
@@ -1008,7 +1041,7 @@ function DevicesTab(): ReactElement {
           </thead>
           <tbody>
             {(devices ?? []).map((device) => {
-              const tone = device.revoked || device.expired ? 'gwmb-bad' : device.isOnline ? 'gwmb-ok' : 'gwmb-warn'
+              const tone = device.revoked || device.expired ? 'gwmb-status-bad' : device.isOnline ? 'gwmb-status-ok' : 'gwmb-status-warn'
               const state = device.revoked ? '已撤销' : device.expired ? '已过期' : device.isOnline ? '在线' : '离线'
               const name = device.displayName || device.deviceName
               const removable = device.revoked || device.expired
@@ -1022,8 +1055,8 @@ function DevicesTab(): ReactElement {
                       {device.userAgent}
                     </div>
                   </td>
-                  <td className={`gwmb-nowrap ${tone}`}>
-                    {state}
+                  <td className="gwmb-nowrap">
+                    <span className={`gwmb-status ${tone}`}>{state}</span>
                     {device.isCurrent ? ' · 本机' : ''}
                   </td>
                   <td className="gwmb-nowrap">{formatShortTime(device.lastActiveAt)}</td>
