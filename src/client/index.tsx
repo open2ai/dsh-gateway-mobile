@@ -186,6 +186,8 @@ const STYLE = `
 .gwmb-error { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent); }
 .gwmb-banner { border: 1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, transparent); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent); color: var(--dsw-alias-label-primary); border-radius: var(--dsw-radius-md, 10px); padding: 10px 14px; font-size: 13px; }
 .gwmb-qr { display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-md, 10px); padding: 10px; width: 100%; max-width: 100%; }
+.gwmb-qr.gwmb-qr-sm { width: 180px; max-width: 180px; padding: 8px; flex: 0 0 auto; }
+.gwmb-divider { height: 1px; background: var(--dsw-alias-border-l1); margin: 4px 0; }
 .gwmb-qr svg { width: 100%; height: auto; display: block; }
 .gwmb-pairing-grid { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 12px; align-items: start; }
 @media (max-width: 760px) { .gwmb-pairing-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -885,6 +887,18 @@ interface OAuthView {
   allowedUsers: string[]
 }
 
+interface WeixinLoginView {
+  enabled: boolean
+  connected: boolean
+  state: string
+  qrcode?: string
+  qrUrl?: string
+  qrSvg?: string
+  accountId?: string
+  pendingUserId?: string
+  lastError?: string
+}
+
 function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const [form, setForm] = useState<SettingsForm | null>(null)
   const [weixinForm, setWeixinForm] = useState<WeixinForm | null>(null)
@@ -893,6 +907,9 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const [oauth, setOAuth] = useState<OAuthView | null>(null)
   const [oauthText, setOAuthText] = useState('')
   const [maintenanceBusy, setMaintenanceBusy] = useState('')
+  const [loginStatus, setLoginStatus] = useState<WeixinLoginView | null>(null)
+  const [loginBusy, setLoginBusy] = useState(false)
+  const [approvals, setApprovals] = useState<unknown[] | null>(null)
   const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
   const [version, setVersion] = useState('')
   const [error, setError] = useState('')
@@ -938,6 +955,30 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
   useEffect(() => {
     void load()
   }, [load])
+
+  const loginState = loginStatus?.state ?? ''
+  useEffect(() => {
+    if (!['wait', 'scaned', 'pending'].includes(loginState)) return
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const next = await apiGet<WeixinLoginView>('/api/gateway-mobile/admin/weixin/login')
+          setLoginStatus(next)
+          if (next.state === 'confirmed') {
+            setMessage('微信已连接')
+            try {
+              setWeixinStatus(await apiGet<WeixinView>('/api/gateway-mobile/read/weixin'))
+            } catch {
+              // keep the last known channel state
+            }
+          }
+        } catch (cause) {
+          setError(messageOf(cause))
+        }
+      })()
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [loginState])
 
   const update = <K extends keyof SettingsForm,>(key: K, value: SettingsForm[K]): void => {
     setForm((current) => (current === null ? current : { ...current, [key]: value }))
@@ -1049,6 +1090,68 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       setError(messageOf(cause))
     } finally {
       setMaintenanceBusy('')
+    }
+  }
+
+  const startWeixinLogin = async (): Promise<void> => {
+    setLoginBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      setLoginStatus(await apiPost<WeixinLoginView>('/api/gateway-mobile/admin/weixin/login'))
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setLoginBusy(false)
+    }
+  }
+
+  const approveWeixinLogin = async (approve: boolean): Promise<void> => {
+    setLoginBusy(true)
+    setError('')
+    try {
+      const next = await apiPost<WeixinLoginView>('/api/gateway-mobile/admin/weixin/approve', { approve })
+      setLoginStatus(next)
+      setMessage(approve ? '已允许连接' : '已拒绝连接')
+      try {
+        setWeixinStatus(await apiGet<WeixinView>('/api/gateway-mobile/read/weixin'))
+      } catch {
+        // keep the last known channel state
+      }
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setLoginBusy(false)
+    }
+  }
+
+  const logoutWeixin = async (): Promise<void> => {
+    if (!window.confirm('断开微信连接？')) return
+    setLoginBusy(true)
+    setError('')
+    try {
+      await apiPost('/api/gateway-mobile/admin/weixin/logout')
+      setLoginStatus(null)
+      setMessage('微信已断开')
+      try {
+        setWeixinStatus(await apiGet<WeixinView>('/api/gateway-mobile/read/weixin'))
+      } catch {
+        // keep the last known channel state
+      }
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setLoginBusy(false)
+    }
+  }
+
+  const loadApprovals = async (): Promise<void> => {
+    setError('')
+    try {
+      const payload = await apiGet<{ items: unknown[] }>('/api/gateway-mobile/read/weixin/approvals')
+      setApprovals(payload.items)
+    } catch (cause) {
+      setError(messageOf(cause))
     }
   }
 
@@ -1208,8 +1311,74 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
             {weixinStatus.weixin.lastError ? ` · ${weixinStatus.weixin.lastError}` : ''}
           </div>
         ) : null}
+        <div className="gwmb-divider" />
+        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
+          <span className="gwmb-meta">扫码登录 {weixinStatus?.weixin?.connected ? '· 已连接' : '· 未连接'}</span>
+          <div className="gwmb-actions">
+            {weixinStatus?.weixin?.connected ? (
+              <button className="gwmb-btn" type="button" disabled={loginBusy} onClick={() => void logoutWeixin()}>
+                退出登录
+              </button>
+            ) : (
+              <button
+                className="gwmb-btn gwmb-btn-primary"
+                type="button"
+                disabled={loginBusy}
+                onClick={() => void startWeixinLogin()}
+              >
+                {loginBusy ? '生成中…' : '生成登录二维码'}
+              </button>
+            )}
+          </div>
+        </div>
+        {loginStatus ? (
+          <div className="gwmb-row">
+            {loginStatus.qrSvg ? (
+              <div className="gwmb-qr gwmb-qr-sm" dangerouslySetInnerHTML={{ __html: loginStatus.qrSvg }} />
+            ) : null}
+            <div className="gwmb-pairing-meta">
+              <div className="gwmb-meta">
+                状态 {loginStatus.state}
+                {loginStatus.pendingUserId ? ' · 等待本机确认' : ''}
+                {loginStatus.lastError ? ` · ${loginStatus.lastError}` : ''}
+              </div>
+              {loginStatus.state === 'pending' ? (
+                <div className="gwmb-actions">
+                  <button
+                    className="gwmb-btn gwmb-btn-primary"
+                    type="button"
+                    disabled={loginBusy}
+                    onClick={() => void approveWeixinLogin(true)}
+                  >
+                    允许连接
+                  </button>
+                  <button className="gwmb-btn" type="button" disabled={loginBusy} onClick={() => void approveWeixinLogin(false)}>
+                    拒绝
+                  </button>
+                </div>
+              ) : null}
+              {loginStatus.state === 'expired' || loginStatus.state === 'error' ? (
+                <button className="gwmb-btn" type="button" disabled={loginBusy} onClick={() => void startWeixinLogin()}>
+                  重新生成二维码
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <div className="gwmb-actions">
+          <button className="gwmb-btn" type="button" onClick={() => void loadApprovals()}>
+            加载审批历史
+          </button>
+        </div>
+        {approvals ? (
+          <div className="gwmb-meta gwmb-code" style={{ maxHeight: 160, overflowY: 'auto' }}>
+            {approvals.length === 0
+              ? '暂无审批记录'
+              : approvals.map((item, index) => <div key={index}>{JSON.stringify(item)}</div>)}
+          </div>
+        ) : null}
         <div className="gwmb-meta gwmb-muted">
-          扫码登录、审批与通知历史在「独立管理台 → 微信」中维护；通知策略保存后立即生效。
+          扫码登录与审批已迁移到工作台，通知策略保存后立即生效；独立管理台仍保留作为兼容入口。
         </div>
       </section>
 
@@ -1317,7 +1486,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
 
       <div className="gwmb-meta gwmb-muted">
-        修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。微信扫码登录、审批历史与设备撤销仍在独立管理台完成。
+        修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。设备重命名/撤销仍在独立管理台完成。
       </div>
     </>
   )

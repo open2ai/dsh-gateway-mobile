@@ -25,6 +25,9 @@
 - 新增「安全与维护」卡片：密钥状态与轮换（`read/keys`、`POST admin/key/rotate`）、OAuth 身份白名单编辑
   （`read/oauth`、`POST admin/oauth`，持久化到 `admin-settings.json`）、审计日志 JSON 导出（`read/audit`）。
   全部接口仍仅限本机。
+- 微信扫码登录、pending 连接审批、退出登录与审批历史迁移到工作台（仅本机接口 `admin/weixin/login`
+  GET/POST、`admin/weixin/approve`、`admin/weixin/logout`、`read/weixin/approvals`）。独立管理台保留为兼容入口。
+- 工作台已覆盖管理台的维护流程；剩余设备重命名/撤销迁移过去后，独立管理页即可退役。
 - 布局遵循 DSH 主面板页面契约：标题与页签固定，只有页签内容滚动；表格与日志按需保持单行。
 - 版本号升级到 `0.2.0-next.0`，用于 npm `next` dist-tag；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`。
 - 执行 `npm run build` 后需要重启一次 `dsh web`（DSH 会缓存客户端 bundle 清单直到重启）。

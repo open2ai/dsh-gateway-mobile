@@ -29,6 +29,11 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
 - New 安全与维护 card: secret-key status and rotation (`read/keys`, `POST admin/key/rotate`),
   OAuth identity allowlist editing (`read/oauth`, `POST admin/oauth`, persisted in `admin-settings.json`),
   and audit-log JSON export (`read/audit`). All routes stay loopback-only.
+- WeChat QR login, pending-connection approval, logout and approval history are now available in the
+  workbench (local-only `admin/weixin/login` GET/POST, `admin/weixin/approve`, `admin/weixin/logout`,
+  `read/weixin/approvals`). The standalone console remains as a compatibility fallback.
+- The workbench now covers the admin-console maintenance flows; the standalone page can be retired
+  after the remaining device rename/revoke actions move over.
 - Layout follows the DSH main-panel page contract: header and tabs stay frozen, only the tab content
   scrolls, and tables/logs keep one-line cells where they must not wrap.
 - Version bumped to `0.2.0-next.0` for the npm `next` dist-tag; `engines.dsh` stays pinned to `0.2.2-rc.1`.

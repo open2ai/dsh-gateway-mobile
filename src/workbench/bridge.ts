@@ -349,6 +349,51 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
       }),
     },
     {
+      path: '/api/gateway-mobile/admin/weixin/login',
+      methods: ['GET', 'POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        if (!gateway.weixin) return errorResponse('微信通道不可用', 409, 1008)
+        return json(request.method === 'POST' ? await gateway.weixin.beginLogin() : await gateway.weixin.pollLogin())
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/weixin/approve',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        if (!gateway.weixin) return errorResponse('微信通道不可用', 409, 1008)
+        const body = (await request.json()) as { approve?: unknown }
+        if (typeof body.approve !== 'boolean') return errorResponse('approve 必须是布尔值', 400, 1002)
+        return json(await gateway.weixin.approveLogin(body.approve))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/read/weixin/approvals',
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: wrap((request) => {
+        const denied = localOnly(request)
+        if (denied) return Promise.resolve(denied)
+        return Promise.resolve(json({ items: gateway.weixinApprovalHistory?.() ?? [] }))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/weixin/logout',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        if (!gateway.weixin) return errorResponse('微信通道不可用', 409, 1008)
+        return json(await gateway.weixin.logout())
+      }),
+    },
+    {
       path: '/api/gateway-mobile/read/keys',
       methods: ['GET'],
       requestBody: 'buffered',
