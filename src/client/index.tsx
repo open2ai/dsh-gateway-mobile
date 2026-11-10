@@ -282,6 +282,9 @@ const STYLE = `
 .gwmb-info-head h3 { margin: 0; }
 .gwmb-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; align-items: start; }
 @media (max-width: 720px) { .gwmb-form { grid-template-columns: minmax(0, 1fr); } }
+.gwmb-form-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1180px) { .gwmb-form-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .gwmb-form-4 { grid-template-columns: minmax(0, 1fr); } }
 .gwmb-form-row > span:first-child { font-size: 12px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
 .gwmb-form-row > .gwmb-meta { line-height: 1.5; }
 .gwmb-form-row > .gwmb-input, .gwmb-form-row > .gwmb-select, .gwmb-form-row > .gwmb-textarea { width: 100%; }
@@ -990,7 +993,7 @@ function PairingTab(): ReactElement {
       <section className="gwmb-card">
         <h3>隧道与配对设置</h3>
         {settings ? (
-          <div className="gwmb-form">
+          <div className="gwmb-form gwmb-form-4">
             <label className="gwmb-form-row">
               <span>隧道开关</span>
               <select
