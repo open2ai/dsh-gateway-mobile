@@ -249,6 +249,7 @@ const STYLE = `
 .gwmb-device-name { color: var(--dsw-alias-label-primary); }
 .gwmb-device-ua { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 .gwmb-log { display: grid; grid-template-columns: 148px 60px minmax(0, 1fr); gap: 10px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); min-width: 0; }
+.gwmb-log-list { padding-bottom: 16px; }
 .gwmb-log-time { color: var(--dsw-alias-label-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gwmb-log-msg { min-width: 0; overflow-wrap: anywhere; word-break: break-word; color: var(--dsw-alias-label-secondary); }
 .gwmb-select { font-size: 13px; padding: 5px 8px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
@@ -1231,7 +1232,7 @@ function LogsTab(): ReactElement {
               ))}
             </select>
           </div>
-          <div>
+          <div className="gwmb-log-list">
             {visible.map((item, index) => (
               <div className="gwmb-log" key={`${item.timestamp}-${index}`}>
                 <span className="gwmb-log-time">{formatTime(item.timestamp)}</span>
