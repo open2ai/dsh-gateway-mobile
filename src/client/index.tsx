@@ -152,6 +152,7 @@ interface SettingsView {
  */
 const STYLE = `
 .gwmb-page { box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 18px; padding: 28px clamp(16px, 4vw, 48px) 0; max-width: 1080px; margin: 0 auto; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); }
+.gwmb-page *, .gwmb-page *::before, .gwmb-page *::after { box-sizing: border-box; }
 .gwmb-head, .gwmb-tabs { flex: 0 0 auto; }
 .gwmb-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; overflow-x: hidden; padding-bottom: 56px; }
 .gwmb-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 20px; }
@@ -197,6 +198,10 @@ const STYLE = `
 .gwmb-icon-btn { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 2px; border-radius: 6px; display: inline-flex; align-items: center; }
 .gwmb-icon-btn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .gwmb-icon-btn:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
+.gwmb-link-btn { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-link); font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.gwmb-link-btn:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.gwmb-link-btn:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
+.gwmb-code-toggle { display: flex; justify-content: center; }
 .gwmb-btn-primary { background: var(--dsw-alias-button-primary-fill); border-color: transparent; color: var(--dsw-alias-label-primary-foreground); }
 .gwmb-btn-primary:hover { background: var(--dsw-alias-button-primary-hover); }
 .gwmb-code-big { font-size: 30px; letter-spacing: .18em; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
@@ -508,6 +513,7 @@ function PairingTab(): ReactElement {
   const [tick, setTick] = useState(Date.now())
   const [showEntry, setShowEntry] = useState(true)
   const [showPairingLink, setShowPairingLink] = useState(false)
+  const [showCode, setShowCode] = useState(false)
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -571,8 +577,22 @@ function PairingTab(): ReactElement {
           {data ? (
             <div className="gwmb-pairing-main">
               <div className="gwmb-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
-              <div className="gwmb-code-big">{data.code}</div>
-              <div className="gwmb-meta gwmb-muted">手机扫码，或在手机入口输入该配对码</div>
+              <div className="gwmb-code-toggle">
+                <button
+                  className="gwmb-link-btn"
+                  type="button"
+                  aria-expanded={showCode}
+                  onClick={() => setShowCode((value) => !value)}
+                >
+                  {showCode ? '隐藏配对码' : '手动输入配对码'}
+                </button>
+              </div>
+              {showCode ? (
+                <>
+                  <div className="gwmb-code-big">{data.code}</div>
+                  <div className="gwmb-meta gwmb-muted">在手机配对页输入这 8 位字符；扫码会自动带入</div>
+                </>
+              ) : null}
             </div>
           ) : (
             <div className="gwmb-meta">正在读取配对信息…</div>
