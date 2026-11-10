@@ -187,6 +187,9 @@ export class ProxyEngine {
       const lower = key.toLowerCase()
       if (lower === 'host' || lower === 'origin' || lower === 'cookie') continue
       if (lower.startsWith('x-forwarded-') || lower === 'x-real-ip') continue
+      // Never trust a caller-supplied gateway classification header; the
+      // gateway sets its own below for the DSH workbench's local/remote split.
+      if (lower.startsWith('x-dsh-gateway-')) continue
       if (HOP_BY_HOP.has(lower) && !(options.upgrade && (lower === 'connection' || lower === 'upgrade'))) continue
       headers[key] = value
     }
@@ -198,6 +201,9 @@ export class ProxyEngine {
     headers['x-real-ip'] = ip
     headers['x-forwarded-proto'] = requestProtocol(req, this.config.security.trustProxy)
     headers['x-forwarded-host'] = String(req.headers.host ?? '')
+    // Marks every request this gateway forwards to DSH as tunnel-proxied. The
+    // DSH workbench bridge treats its presence as "not the local administrator".
+    headers['x-dsh-gateway-proxied'] = '1'
     if (options.upgrade) {
       headers.connection = 'Upgrade'
       headers.upgrade = 'websocket'

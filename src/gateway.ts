@@ -68,6 +68,21 @@ import {
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web')
 const JSON_BODY_LIMIT = 64 * 1024
 
+/**
+ * DSH workbench paths that must never be reached through the tunnel proxy.
+ * Management actions and local-only reads (pairing code/QR, full device list,
+ * logs, settings) are reserved for the machine's own DSH UI session.
+ */
+function isWorkbenchLocalOnlyPath(pathname: string): boolean {
+  if (pathname.startsWith('/api/gateway-mobile/admin/')) return true
+  return (
+    pathname === '/api/gateway-mobile/read/pairing' ||
+    pathname === '/api/gateway-mobile/read/devices' ||
+    pathname === '/api/gateway-mobile/read/logs' ||
+    pathname === '/api/gateway-mobile/read/settings'
+  )
+}
+
 const PAGE_ROUTES = new Map([
   ['/mobile/pair', 'pair.html'],
   ['/mobile/pair/', 'pair.html'],
@@ -833,6 +848,14 @@ export class Gateway {
 
     if (pathname.startsWith('/mobile/')) {
       await this.#serveStatic(req, res, pathname, info)
+      return
+    }
+
+    // Workbench management and local-only reads: a paired phone reaches DSH
+    // through this proxy, so refuse the local-only prefixes before forwarding.
+    // (The DSH-side bridge independently checks the classification header.)
+    if (!info.local && isWorkbenchLocalOnlyPath(pathname)) {
+      this.sendJson(req, res, CODES.PERMISSION_DENIED, {}, 403)
       return
     }
 

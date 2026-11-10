@@ -9,10 +9,15 @@
 - 新增 DSH 浏览器半侧（`dsh.client`、`exports["./client"]`、`lib/client.js`），由新增的
   `scripts/build-client.mjs` 构建；注册整页 `main` 面板 `gateway-mobile-workbench` 和左侧栏入口，
   与官方 Plugins/Schedules 页同构。
-- 在 DSH Connection 服务上注册宿主桥路由（`ctx.connection.fetch.register`），首个接口为
-  `GET /api/gateway-mobile/read/ping`：同源、使用 DSH 浏览器会话认证，不再回环 HTTP 跳回网关。
-- 工作台页只读展示网关/隧道/设备/能力状态，并保留“打开独立管理台”“打开手机入口”链接。手机可打开
-  同一页面但保持只读；配对码、隧道启停、微信登录/审批、设置与密钥轮换仍仅限本机（管理操作在后续阶段加入）。
+- 在 DSH Connection 服务上注册宿主桥路由（`ctx.connection.fetch.register`）：`read/ping`（桌面与手机
+  均可用），以及仅本机的 `read/pairing`、`read/devices`、`read/logs`、`read/settings` 和
+  `POST admin/pairing/regenerate`。同源、使用 DSH 浏览器会话认证，不再回环 HTTP 跳回网关。
+- 网关给所有转发请求注入 `x-dsh-gateway-proxied`（并剥离调用方伪造的同名头），在代理前就拒绝工作台
+  本地专属前缀，因此手机即使打开同一 UI 也拿不到配对码、设备、日志、设置或管理操作；DSH 桥再按同一
+  信号 fail-closed 复核一层。
+- 工作台 UI（Phase 1）：概览、配对（二维码 + 8 位码 + 重新生成 + 复制链接）、设备、日志、设置（只读）
+  五个页签；手机只看到概览。页面配色改用 DSH 语义主题 token（`--dsw-alias-label-*`、
+  `--dsw-alias-bg-layer-*`、`--dsw-alias-border-*`、状态色），跟随 DSH 明暗主题，不再假设浅色背景。
 - 版本号升级到 `0.2.0-next.0`，用于 npm `next` dist-tag；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`。
 - 执行 `npm run build` 后需要重启一次 `dsh web`（DSH 会缓存客户端 bundle 清单直到重启）。
 

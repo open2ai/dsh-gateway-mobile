@@ -9,13 +9,18 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
 - Adds a DSH browser half (`dsh.client`, `exports["./client"]`, `lib/client.js`) built by the new
   `scripts/build-client.mjs`; it registers a full-page `main` panel `gateway-mobile-workbench` plus
   a left-sidebar entry, mirroring the official Plugins/Schedules pages.
-- Adds host bridge routes on the DSH Connection service (`ctx.connection.fetch.register`), starting
-  with `GET /api/gateway-mobile/read/ping`: same-origin, authenticated by DSH's browser session, and
-  no loopback HTTP hop back into the gateway.
-- The workbench page shows gateway/tunnel/device/capability status read-only and keeps links to the
-  standalone console and the public phone entry. Paired phones can open the same page but stay
-  read-only; pairing codes, tunnel controls, WeChat login/approval, settings and key rotation remain
-  loopback-only (admin actions arrive in later phases).
+- Adds host bridge routes on the DSH Connection service (`ctx.connection.fetch.register`): `read/ping`
+  for both desktop and paired phones, plus local-only `read/pairing`, `read/devices`, `read/logs`,
+  `read/settings` and `POST admin/pairing/regenerate`. Same-origin, authenticated by DSH's browser
+  session, and no loopback HTTP hop back into the gateway.
+- The gateway now marks every forwarded request with `x-dsh-gateway-proxied` (stripping caller-supplied
+  copies) and refuses the workbench local-only prefixes before proxying, so a paired phone cannot reach
+  pairing codes, device lists, logs, settings or management actions even though it opens the same UI.
+  The workbench bridge enforces the same split again (fail-closed) as defense in depth.
+- Workbench UI (Phase 1): tabs for overview, pairing (QR + 8-character code + regenerate + copy link),
+  devices, logs and read-only settings; phones see the overview only. The page uses DSH's semantic theme
+  tokens (`--dsw-alias-label-*`, `--dsw-alias-bg-layer-*`, `--dsw-alias-border-*`, state colors), so it
+  follows DSH light/dark appearance instead of assuming a light background.
 - Version bumped to `0.2.0-next.0` for the npm `next` dist-tag; `engines.dsh` stays pinned to `0.2.2-rc.1`.
 - Activation needs one `dsh web` restart after `npm run build` (DSH caches client bundle manifests until restart).
 

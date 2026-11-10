@@ -9,6 +9,8 @@
 >
 > **Phase 0 已落地文件**：`scripts/build-client.mjs`、`tsconfig.client.json`、`src/client/index.tsx`、`src/workbench/bridge.ts`、`test/workbench.test.js`；`package.json` 增加 `dsh.client` / `exports["./client"]` / 构建脚本；`src/index.ts` 接入桥路由；`tsconfig.json` 排除 `src/client`。
 >
+> **Phase 1 已落地（2026-11-10）**：`read/pairing`、`read/devices`、`read/logs`、`read/settings`（仅本机）与 `POST admin/pairing/regenerate`；网关注入 `x-dsh-gateway-proxied` 并在代理层对本地专属前缀 403；工作台 5 个页签（概览/配对/设备/日志/设置），手机仅概览；配色改用 DSH `--dsw-alias-*` 主题 token，跟随明暗主题。
+>
 > **启用步骤**：`npm run build` 后重启一次 `dsh web`（DSH 缓存客户端 bundle 清单直到重启）。重启会同时重连 Quick Tunnel（公网域名可能变化，手机需重新配对）。
 
 ---
