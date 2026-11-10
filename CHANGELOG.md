@@ -38,6 +38,8 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
   `admin/devices/rename|revoke|delete|purge`).
 - Compatibility switch: 设置 → 安全与维护 → 独立管理台 can disable the standalone page (it then
   answers 404 while loopback APIs stay available). The header link hides when disabled.
+- The workbench is renamed from “手机网关” to “移动端网关” (page title, sidebar entry
+  and docs); the default gateway port stays `3091`.
 - Default gateway port is now `3091` (was `3081`); update any bookmarks or reverse proxies.
 - The pairing tab's URL-change banner now clears itself: the host reports `repairedSinceChange`
   (a device paired after `urlChangedAt`), and the banner can be dismissed per change (localStorage).

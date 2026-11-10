@@ -1,5 +1,5 @@
 /**
- * DSH browser half: the “手机网关” workbench page and its left-sidebar entry.
+ * DSH browser half: the “移动端网关” workbench page and its left-sidebar entry.
  *
  * The DSH client module system loads this file as a lazy-CJS factory
  * (`window.__ModuleLoader__.load({ id, factory })`) and mounts it on the root
@@ -56,7 +56,7 @@ interface ClientContext {
 }
 
 const DICTIONARIES: Record<string, Record<string, string>> = {
-  zh: { panel: '手机网关' },
+  zh: { panel: '移动端网关' },
   en: { panel: 'Mobile Gateway' },
 }
 
@@ -601,7 +601,7 @@ function OverviewTab(props: {
         <section className="gwmb-card">
           <h3>只读视图</h3>
           <p className="gwmb-note">
-            当前页面经手机网关打开，按安全策略仅展示只读概览。配对码、设备、日志与设置请在本机 DSH UI 或独立管理台查看。
+            当前页面经移动端网关打开，按安全策略仅展示只读概览。配对码、设备、日志与设置请在本机 DSH UI 或独立管理台查看。
           </p>
         </section>
       ) : null}
@@ -2147,7 +2147,7 @@ function WorkbenchPage(): ReactElement {
     <div className="gwmb-page">
       <header className="gwmb-head">
         <div>
-          <h2 className="gwmb-title">手机网关</h2>
+          <h2 className="gwmb-title">移动端网关</h2>
           <p className="gwmb-sub">
             手机与微信通道的工作台。
             {!bridgeReady
@@ -2176,7 +2176,7 @@ function WorkbenchPage(): ReactElement {
       </header>
 
       {local ? (
-        <div className="gwmb-tabs" role="tablist" aria-label="手机网关分区">
+        <div className="gwmb-tabs" role="tablist" aria-label="移动端网关分区">
           {tabs.map((item) => (
             <button
               key={item.id}

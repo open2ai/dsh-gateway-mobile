@@ -42,7 +42,7 @@ WeChat handles an approval or question only while it has a valid inbound context
 - WeChat approvals, questions, plan review, and timed-question late answers
 - Cross-session completion notifications with merge/cooldown/rate limits
 - Admin console: overview (status chips + KPI/quick actions/request trend chart with 7/14/30-day switch), pairing, WeChat, devices, logs, settings, help with diagnostics
-- **DSH Web UI workbench (preview)** — a “手机网关” page and left-sidebar entry inside DSH Web UI (status overview + links to the standalone console), backed by same-origin `/api/gateway-mobile/read/*` routes; the standalone console stays available
+- **DSH Web UI workbench (preview)** — a “移动端网关” page and left-sidebar entry inside DSH Web UI (status overview + links to the standalone console), backed by same-origin `/api/gateway-mobile/read/*` routes; the standalone console stays available
 - `/health?deep=1` readiness, filtered audit export, key rotation, and a capability matrix
 - `npm run doctor` environment check and `npm run hmr-check` reload smoke test
 - Mobile opens the official DSH Web UI

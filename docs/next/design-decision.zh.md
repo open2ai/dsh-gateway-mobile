@@ -1,4 +1,4 @@
-# 0.2.0-next 设计决策：把网关监控台变成 DSH 内“手机网关工作台”
+# 0.2.0-next 设计决策：把网关监控台变成 DSH 内“移动端网关工作台”
 
 > 状态：**已拍板，Phase 0 已实现**（2026-11-10）。剩余 Phase 1/2 待排期。
 > 分支：`next`（从 `main@8783645`，插件 0.1.4 切出）。
@@ -25,13 +25,13 @@
 
 - DSH **没有**“工作台 / 顶层页面 / URL 路由”的一等概念；Web UI 是 slot 组合，不是路由表。
 - 唯一自然的“整页 + 导航入口”组合是 **`main` keyed 面板 + `sidebar.panellist` 图标**，与官方 **Plugins** / **Schedules** 页完全同构（`ctx.slots.register({ name:'main', key })` + `ctx.slots.register({ name:'sidebar.panellist', id:key, label, icon })`）。
-- 因此“作为 DSH 的一个工作台”在产品上应表述为：**在 DSH 左侧栏新增“手机网关”入口，点开是整页工作台**。不是改造 DSH 本体，也不是新增 DSH 概念。
+- 因此“作为 DSH 的一个工作台”在产品上应表述为：**在 DSH 左侧栏新增“移动端网关”入口，点开是整页工作台**。不是改造 DSH 本体，也不是新增 DSH 概念。
 
 **推荐形态**：
 
 ```
 DSH Web UI（3080 / 隧道）
- ├─ 左栏图标“手机网关”（sidebar.panellist）
+ ├─ 左栏图标“移动端网关”（sidebar.panellist）
  └─ 整页工作台（main 面板，key=gateway-workbench）
       概览 · 配对 · 微信 · 设备 · 日志 · 设置 · 帮助
       页头：“打开独立管理台”“打开公网手机入口”
