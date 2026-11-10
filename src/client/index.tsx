@@ -227,15 +227,19 @@ const STYLE = `
 .gwmb-btn-danger:hover { filter: brightness(1.08); }
 .gwmb-range-inline { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-md, 10px); background: var(--dsw-alias-bg-layer-2); padding: 12px; }
 .gwmb-range-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.gwmb-range-nav .gwmb-icon-btn { width: 28px; height: 28px; justify-content: center; font-size: 18px; }
 .gwmb-range-months { display: flex; flex-wrap: wrap; gap: 18px; }
 .gwmb-cal { min-width: 196px; }
-.gwmb-cal-title { font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 6px; }
-.gwmb-cal-grid { display: grid; grid-template-columns: repeat(7, 26px); gap: 2px; }
+.gwmb-cal-title { font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 6px; color: var(--dsw-alias-label-primary); }
+.gwmb-cal-grid { display: grid; grid-template-columns: repeat(7, 28px); gap: 2px; }
 .gwmb-cal-week { font-size: 11px; text-align: center; color: var(--dsw-alias-label-tertiary); padding: 2px 0; }
-.gwmb-cal-day { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-primary); font-size: 12px; width: 26px; height: 26px; border-radius: 6px; cursor: pointer; }
+.gwmb-cal-day { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-primary); font-size: 12px; width: 28px; height: 28px; border-radius: var(--dsw-radius-sm, 6px); cursor: pointer; font-variant-numeric: tabular-nums; }
 .gwmb-cal-day:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.gwmb-cal-day-active { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); }
-.gwmb-cal-day-active:hover { background: var(--dsw-alias-button-primary-hover); }
+.gwmb-cal-day-edge { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground); }
+.gwmb-cal-day-edge:hover { background: var(--dsw-alias-button-primary-hover); }
+.gwmb-cal-day-inrange { background: color-mix(in srgb, var(--dsw-alias-button-primary-fill) 14%, transparent); border-radius: 0; }
+.gwmb-cal-day-inrange:hover { background: color-mix(in srgb, var(--dsw-alias-button-primary-fill) 22%, transparent); }
+.gwmb-cal-day-today { box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l3); }
 .gwmb-cal-day:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
 .gwmb-modal-mask { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.45); }
 .gwmb-modal { box-sizing: border-box; width: min(420px, 100%); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent); padding: 18px; display: flex; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
@@ -1192,12 +1196,23 @@ function DateRangePicker(props: {
           {cells.map((date, index) => {
             if (date === null) return <div key={`empty-${index}`} />
             const ms = date.getTime()
-            const active = activeRange !== null && ms >= activeRange[0] && ms <= activeRange[1]
+            const isStart = activeRange !== null && ms === activeRange[0]
+            const isEnd = activeRange !== null && ms === activeRange[1]
+            const inRange = activeRange !== null && ms > activeRange[0] && ms < activeRange[1]
+            const today = ms === dayStart(Date.now())
+            const classes = [
+              'gwmb-cal-day',
+              isStart || isEnd ? 'gwmb-cal-day-edge' : '',
+              inRange ? 'gwmb-cal-day-inrange' : '',
+              today ? 'gwmb-cal-day-today' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
             return (
               <button
                 key={ms}
                 type="button"
-                className={`gwmb-cal-day ${active ? 'gwmb-cal-day-active' : ''}`}
+                className={classes}
                 onMouseDown={(event) => {
                   event.preventDefault()
                   anchorRef.current = ms
@@ -1222,12 +1237,13 @@ function DateRangePicker(props: {
     <div className="gwmb-range-inline">
       <div className="gwmb-range-nav">
         <button
-          className="gwmb-btn gwmb-btn-sm"
+          className="gwmb-icon-btn"
           type="button"
+          title="上个月"
           aria-label="上个月"
           onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
         >
-          ‹ 上个月
+          ‹
         </button>
         <span className="gwmb-meta">
           {props.value
@@ -1235,12 +1251,13 @@ function DateRangePicker(props: {
             : '按住开始日期拖到结束日期，或依次点击两天'}
         </span>
         <button
-          className="gwmb-btn gwmb-btn-sm"
+          className="gwmb-icon-btn"
           type="button"
+          title="下个月"
           aria-label="下个月"
           onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
         >
-          下个月 ›
+          ›
         </button>
       </div>
       <div className="gwmb-range-months">
