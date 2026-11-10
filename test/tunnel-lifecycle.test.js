@@ -37,7 +37,7 @@ test('tunnel: parses the Quick Tunnel URL and reports connected', async () => {
   const manager = new TunnelManager({
     config: config(),
     logger: new Logger({ level: 'error' }),
-    gatewayPort: () => 3081,
+    gatewayPort: () => 3091,
     spawnImpl: () => child,
   })
   await manager.start()
@@ -54,7 +54,7 @@ test('tunnel: disabled configuration is inert', async () => {
   const manager = new TunnelManager({
     config: configValue,
     logger: new Logger({ level: 'error' }),
-    gatewayPort: () => 3081,
+    gatewayPort: () => 3091,
   })
   const status = await manager.start()
   assert.equal(status.state, 'disabled')
@@ -67,7 +67,7 @@ test('tunnel: start is idempotent and stop kills every child', async () => {
   const manager = new TunnelManager({
     config: config(),
     logger: new Logger({ level: 'error' }),
-    gatewayPort: () => 3081,
+    gatewayPort: () => 3091,
     spawnImpl: () => {
       spawns += 1
       const child = new FakeChild()

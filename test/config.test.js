@@ -8,7 +8,7 @@ test('normalizeConfig applies defaults and derives dataDir', () => {
   const config = normalizeConfig(undefined, { env, home: env.DSH_HOME })
   assert.equal(config.enabled, true)
   assert.equal(config.gateway.host, '127.0.0.1')
-  assert.equal(config.gateway.port, 3081)
+  assert.equal(config.gateway.port, 3091)
   assert.equal(config.tunnel.enabled, true)
   assert.equal(config.tunnel.mode, 'quick')
   assert.equal(config.auth.pairingTokenExpiry, 900)

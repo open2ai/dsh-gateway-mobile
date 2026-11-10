@@ -2,8 +2,8 @@
 
 [English](./admin-console.md) | 中文
 
-`http://127.0.0.1:3081/mobile/admin` — 简写书签别名
-`http://127.0.0.1:3081/admin`；也可通过 `npm run admin` 打开。仅限本机回环访问。
+`http://127.0.0.1:3091/mobile/admin` — 简写书签别名
+`http://127.0.0.1:3091/admin`；也可通过 `npm run admin` 打开。仅限本机回环访问。
 首次运行时尚无设备会话也可使用本页与 admin API，因此在任何手机配对之前就能展示
 配对二维码。admin console 是 zh-CN 运维界面；手机 PWA 页面跟随浏览器语言（中文/英文）。
 

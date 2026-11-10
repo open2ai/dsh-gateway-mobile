@@ -19,7 +19,7 @@
 
 - DSH `0.2.2-rc.1`（`engines.dsh` 精确匹配）。
 - cloudflared（未安装时会尝试自动下载）。
-- 管理后台仅限本机：`http://127.0.0.1:3081/mobile/admin`。
+- 管理后台仅限本机：`http://127.0.0.1:3091/mobile/admin`。
 
 ## 安全模型
 

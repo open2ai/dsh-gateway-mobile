@@ -76,7 +76,7 @@ Out of scope: bypassing DSH approvals or sandboxes, exposing DSH's port directly
 
 ### P0-6 Compatibility checks: DSH upgrades and HMR
 
-**Problem**: Each DSH upgrade changes `engines.dsh` and runs unit tests, while `scripts/integration-check.mjs` is manual. There is no smoke test for a linked install under HMR. The plugin owns port 3081 and a cloudflared child; a reload window where the old disposer has not finished can produce `EADDRINUSE` or an orphan cloudflared (**needs verification**: whether `ctx.effect` async cleanup is awaited during reload).
+**Problem**: Each DSH upgrade changes `engines.dsh` and runs unit tests, while `scripts/integration-check.mjs` is manual. There is no smoke test for a linked install under HMR. The plugin owns port 3091 and a cloudflared child; a reload window where the old disposer has not finished can produce `EADDRINUSE` or an orphan cloudflared (**needs verification**: whether `ctx.effect` async cleanup is awaited during reload).
 
 **Approach**: Split the integration check into `smoke` (current) and `capability` (missing optional services, no WeChat config, `tunnel.enabled:false`). Add `scripts/hmr-check.mjs`: start dsh web with the plugin linked, touch `lib/index.js`, assert the port works, exactly one cloudflared exists, and old WS connections close. Record the tested DSH version matrix in the release checklist.
 
@@ -140,7 +140,7 @@ Out of scope: bypassing DSH approvals or sandboxes, exposing DSH's port directly
 
 **Problem**: `engines.dsh` is an exact match and Node must be >= 24, so a DSH upgrade can stop the plugin from loading, yet there is no self-check. `package.json` `files` ships only `docs/DETAIL.*` while `scripts/pack.mjs` copies all of `docs/`, so npm and zip differ. `docs/architecture-flow.md` says plugin 0.1.1/DSH 0.2.1-rc.4, `docs/api.md` examples say 0.1.0, and `docs/deviations.md` says 0.2.1-rc.2.
 
-**Approach**: Add `scripts/doctor.mjs` (Node/DSH versions, cloudflared version and hash, port 3081, writable dataDir, profile row, DSH cookie exchange) with copyable output, exposed as `npm run doctor`. Align `files` with the pack list. Add `scripts/check-docs.mjs` for version references against `package.json`/`engines`, and `docs/upgrade.md`.
+**Approach**: Add `scripts/doctor.mjs` (Node/DSH versions, cloudflared version and hash, port 3091, writable dataDir, profile row, DSH cookie exchange) with copyable output, exposed as `npm run doctor`. Align `files` with the pack list. Add `scripts/check-docs.mjs` for version references against `package.json`/`engines`, and `docs/upgrade.md`.
 
 **Scope**: small (`scripts/`, `package.json`, `docs/`).
 
@@ -203,7 +203,7 @@ Out of scope: bypassing DSH approvals or sandboxes, exposing DSH's port directly
 These depend on external DSH or iLink behavior. Validate each with a minimal script before baking it into an implementation assumption:
 
 - ~~Whether Cordis `ctx.get()` sees a service not declared in `inject`, and when.~~ **Resolved**: it does not see sibling-provided services without an `inject` declaration; `ctx.get()` only resolves services mapped into the calling fiber's isolate scope.
-- Whether DSH HMR awaits `ctx.effect` async disposers and releases port 3081 immediately.
+- Whether DSH HMR awaits `ctx.effect` async disposers and releases port 3091 immediately.
 - Whether iLink `getupdates` `ret=-14` only means "login invalid", or a recoverable token-expiry code exists.
 - Whether cloudflared exposes a stable local metrics/connector-health endpoint to replace the Named Tunnel fixed sleep.
 - Whether the DSH web profile exposes a non-owner peer identity to plugins (the prerequisite for multi-user).

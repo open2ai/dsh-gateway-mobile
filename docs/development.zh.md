@@ -85,7 +85,7 @@ node scripts/doctor.mjs --json --strict
 数据目录缓存）、配置的网关端口、dataDir 是否可写、DSH profile 是否链接了本插件，以及
 密钥材料是否存在。它从不打印 token、配对码或密钥内容。每项发现都带修复建议；任意 ❌
 退出码为 1，`--strict` 时 ⚠ 也返回 1。配置端口从链接 profile 的 `cordis.patch.yml` 尽力
-读取，默认 3081；`DSH_HOME` 与 `DSH_GATEWAY_DATA_DIR` 可覆盖 DSH home/数据目录的位置。
+读取，默认 3091；`DSH_HOME` 与 `DSH_GATEWAY_DATA_DIR` 可覆盖 DSH home/数据目录的位置。
 
 ## 诊断：热重载检查
 

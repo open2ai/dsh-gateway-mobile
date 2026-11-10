@@ -2,14 +2,14 @@
 /**
  * Open the local DSH Gateway admin console in the default browser.
  *
- * Default: http://127.0.0.1:3081/admin (falls back to /mobile/admin on an
+ * Default: http://127.0.0.1:3091/admin (falls back to /mobile/admin on an
  * older running gateway that does not have the short alias yet).
- * Override: DSH_GATEWAY_ADMIN_URL=http://127.0.0.1:3081/admin npm run admin
+ * Override: DSH_GATEWAY_ADMIN_URL=http://127.0.0.1:3091/admin npm run admin
  */
 import { spawn } from 'node:child_process'
 
 const configured = process.env.DSH_GATEWAY_ADMIN_URL
-const origin = process.env.DSH_GATEWAY_ORIGIN || 'http://127.0.0.1:3081'
+const origin = process.env.DSH_GATEWAY_ORIGIN || 'http://127.0.0.1:3091'
 
 async function resolveAdminUrl() {
   if (configured) return configured

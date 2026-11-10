@@ -10,7 +10,7 @@
         gateway:
           # Loopback only. cloudflared connects to this port.
           host: '127.0.0.1'
-          port: 3081
+          port: 3091
         tunnel:
           # Quick Tunnel is enabled by default (zero-config). Set false when
           # you front the gateway with your own reverse proxy / Named Tunnel.

@@ -58,7 +58,7 @@ test('named tunnel: /ready success reports connected and healthy', async (t) => 
   const manager = new TunnelManager({
     config: namedConfig(),
     logger: new Logger({ level: 'error' }),
-    gatewayPort: () => 3081,
+    gatewayPort: () => 3091,
     spawnImpl: (command, args) => {
       spawnCalls.push({ command, args })
       return child
@@ -80,14 +80,14 @@ test('named tunnel: /ready success reports connected and healthy', async (t) => 
   assert.equal(status.connected, true)
   assert.equal(status.health, 'ok')
   assert.ok(status.lastHealthyAt > 0)
-  assert.equal(status.metricsPort, 4081)
+  assert.equal(status.metricsPort, 4091)
   assert.equal(status.connectors, 2)
   assert.equal(status.restarts, 0)
 
   assert.equal(spawnCalls.length, 1)
   const args = spawnCalls[0].args
   assert.ok(args.includes('--metrics'))
-  assert.deepEqual(args.slice(-2), ['--metrics', '127.0.0.1:4081'])
+  assert.deepEqual(args.slice(-2), ['--metrics', '127.0.0.1:4091'])
   assert.equal(probes.some((url) => url.endsWith('/ready')), true)
 
   const health = await manager.health()
@@ -99,7 +99,7 @@ test('named tunnel: /ready timeout degrades without throwing', async (t) => {
   const manager = new TunnelManager({
     config: namedConfig(),
     logger: new Logger({ level: 'error' }),
-    gatewayPort: () => 3081,
+    gatewayPort: () => 3091,
     spawnImpl: () => child,
     fetchImpl: async () => {
       throw new Error('ECONNREFUSED')
@@ -130,7 +130,7 @@ test('tunnel: health() reports disabled when the tunnel is configured off', asyn
   const manager = new TunnelManager({
     config,
     logger: new Logger({ level: 'error' }),
-    gatewayPort: () => 3081,
+    gatewayPort: () => 3091,
   })
 
   assert.deepEqual(await manager.health(), { ok: true, detail: 'disabled' })
@@ -142,7 +142,7 @@ test('quick tunnel: a changed public URL records lastUrlChangedAt', async (t) =>
   const manager = new TunnelManager({
     config: quickConfig(),
     logger: new Logger({ level: 'error' }),
-    gatewayPort: () => 3081,
+    gatewayPort: () => 3091,
     spawnImpl: () => child,
   })
   t.after(async () => {

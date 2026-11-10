@@ -11,7 +11,7 @@
     dataDir: ''                     # 默认：$DSH_HOME/gateway-mobile
     gateway:
       host: '127.0.0.1'             # 仅回环
-      port: 3081
+      port: 3091
       publicUrl: ''                 # 可选：Named Tunnel / 自建反向代理
     tunnel:
       enabled: true

@@ -29,7 +29,12 @@ export function createPublicRouter(): Router {
 
   router.add({
     path: '/admin',
-    handler: async ({ res }) => {
+    handler: async ({ res, gateway }) => {
+      if (!gateway.adminConsoleEnabled()) {
+        res.statusCode = 404
+        res.end()
+        return
+      }
       res.statusCode = 302
       res.setHeader('location', '/mobile/admin')
       res.end()
@@ -37,7 +42,12 @@ export function createPublicRouter(): Router {
   })
   router.add({
     path: '/admin/',
-    handler: async ({ res }) => {
+    handler: async ({ res, gateway }) => {
+      if (!gateway.adminConsoleEnabled()) {
+        res.statusCode = 404
+        res.end()
+        return
+      }
       res.statusCode = 302
       res.setHeader('location', '/mobile/admin')
       res.end()

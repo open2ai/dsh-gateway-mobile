@@ -14,7 +14,7 @@ back to the document.
 | `require('cordis')`, `exports.*`, `exports.Config`, `ctx.plugin.config` | DSH is ESM + Cordis 4; plugins export `name`, `inject`, `apply(ctx, config)` | `lib/index.js` uses ESM exports; config is the `apply` second argument |
 | `inject: { db: true, i18n: true }` | No `db`/`i18n` services in a base web profile | `inject = ['webServer', 'connection']`; no DB/i18n services |
 | `ctx.get('dsh/session')`, `ctx.get('apiproxy')` | Not part of the shipped web profile | Not used; the gateway is protocol-opaque |
-| `ctx.get('webserver')` / `apiProxy.serveStatic` | Service is `ctx.webServer`; static serving is owned by `dsh-host-frontend-static` | Gateway is a **sidecar HTTP server** on 3081 and serves its own `/mobile` pages |
+| `ctx.get('webserver')` / `apiProxy.serveStatic` | Service is `ctx.webServer`; static serving is owned by `dsh-host-frontend-static` | Gateway is a **sidecar HTTP server** on 3091 and serves its own `/mobile` pages |
 | `ctx.on('dsh/session-created')`, `approval-requested` | No such Cordis events in the base web profile | Deferred; the official DSH UI remains the source of approvals |
 | DSH `>=1.5.0`; `cordis.patch.yml` new API | Installed/verified `0.2.2-rc.1` | `engines.dsh: 0.2.2-rc.1`; bundle patch uses the current loader |
 | `package.json` `peerDependencies.dsh` | `dsh` is not a package name; the CLI is `@deepseek-ai/dsh` | `engines.dsh` range only |

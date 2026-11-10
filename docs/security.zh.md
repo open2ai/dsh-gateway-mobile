@@ -18,7 +18,7 @@
 ## 信任边界
 
 1. **手机 ↔ Cloudflare 边缘**：公网 TLS；Cloudflare 终止 TLS，可看到明文。这是 Quick Tunnel 的固有特性。
-2. **Cloudflare 边缘 ↔ 本地网关**：出站隧道；Cloudflare 向 `127.0.0.1:3081` 发起请求。
+2. **Cloudflare 边缘 ↔ 本地网关**：出站隧道；Cloudflare 向 `127.0.0.1:3091` 发起请求。
 3. **网关 ↔ DSH**：回环；网关持有 DSH 的 cookie，并把 Host/Origin 改写成 DSH 的回环 authority。
 4. **DSH ↔ 不可信网页/文件内容**：提示词注入边界；网关无法修复，只能减少审批失误。
 

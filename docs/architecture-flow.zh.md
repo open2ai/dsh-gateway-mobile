@@ -10,7 +10,7 @@
 纯文本拓扑：
 
 ```text
-手机浏览器 ──HTTPS──► Cloudflare Edge ──出站隧道──► Gateway 127.0.0.1:3081
+手机浏览器 ──HTTPS──► Cloudflare Edge ──出站隧道──► Gateway 127.0.0.1:3091
                                                         │
 微信用户 ──► 微信 iLink ◄──长轮询 / sendmessage──────────┤
                                                         │ HTTP / WebSocket 反向代理
@@ -37,7 +37,7 @@ flowchart LR
   end
 
   subgraph Host["本机 DSH Host"]
-    GW["dsh-gateway-mobile<br/>127.0.0.1:3081"]
+    GW["dsh-gateway-mobile<br/>127.0.0.1:3091"]
     DSH["dsh web<br/>127.0.0.1:3080"]
     FS["本地数据目录<br/>$DSH_HOME/gateway-mobile"]
   end
@@ -54,7 +54,7 @@ flowchart LR
 关键边界：
 
 - DSH 只监听回环地址，不直接暴露公网。
-- 公网入口只有 Cloudflare Quick Tunnel，终止在插件的 `127.0.0.1:3081`。
+- 公网入口只有 Cloudflare Quick Tunnel，终止在插件的 `127.0.0.1:3091`。
 - 微信不经过 Cloudflare；插件通过 iLink 主动长轮询和发送消息。
 - 管理后台只在电脑本机回环可访问。
 
@@ -152,7 +152,7 @@ flowchart TB
 sequenceDiagram
   participant L as Cordis Loader
   participant I as src/index.ts
-  participant G as Gateway 3081
+  participant G as Gateway 3091
   participant T as Tunnel
   participant W as WeixinChannel
   participant B as WeixinBridge
@@ -160,7 +160,7 @@ sequenceDiagram
 
   L->>I: 加载 gateway-mobile 插件
   I->>I: normalizeConfig + 初始化数据目录 / secret / logger / devices / settings
-  I->>G: 创建并监听 127.0.0.1:3081
+  I->>G: 创建并监听 127.0.0.1:3091
   I->>T: 后台启动 Quick Tunnel
   I->>W: 恢复微信凭证（如有）
   I->>B: 启动桥接
@@ -185,7 +185,7 @@ sequenceDiagram
 sequenceDiagram
   participant P as 手机浏览器
   participant E as Cloudflare Edge
-  participant G as Gateway 3081
+  participant G as Gateway 3091
   participant D as DSH Web 3080
 
   P->>E: HTTPS /mobile/pair
@@ -379,7 +379,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  Admin["本机浏览器<br/>127.0.0.1:3081/mobile/admin"] --> Gateway["Gateway"]
+  Admin["本机浏览器<br/>127.0.0.1:3091/mobile/admin"] --> Gateway["Gateway"]
   Gateway -->|静态资源| Web["web/admin.html + admin.ts + admin.css"]
   Gateway -->|GET/POST 管理 API| Services["配对 / 设备 / 隧道 / 微信 / 日志 / 设置"]
   Services --> Store["$DSH_HOME/gateway-mobile"]

@@ -3,7 +3,7 @@
 > 目的：为“把插件独立监控台（`/mobile/admin`）集成成 DSH Web UI 内的工作台”提供**插件侧事实基线**。本文只做只读分析，不包含产品代码改动。
 >
 > - 仓库：`F:\ai_workspace\dsh-gateway-mobile`，分支 `next`，HEAD `8783645`（工作树干净）。
-> - 运行时实测：DSH `0.2.2-rc.1`（web profile，3080），插件 `0.1.4`（网关 3081，正在运行，隧道 connected）。
+> - 运行时实测：DSH `0.2.2-rc.1`（web profile，3080），插件 `0.1.4`（网关 3091，正在运行，隧道 connected）。
 > - 分析日期：2026-11-10。对照资料：`docs/`（security / roadmap / admin-console / DETAIL / deviations / mobile-workspace / development / api）、`src/`、`web/`、`scripts/`、`test/`、本机已安装 DSH 包。
 > - 证据写法：`path:line`。行号以当前 HEAD 为准。
 
@@ -13,9 +13,9 @@
 
 1. **管理台实际上有 7 个 tab，不是 6 个**（0.1.4 新增“帮助”）：概览、配对、微信、设备、日志、设置、帮助（`web/admin.html:46-54`、`web/admin.html:694-702`、`web/src/admin.ts:6`）。`docs/roadmap.zh.md:100` 的“6 个 tab”是 P1-4 落地前的描述，0.1.4 已按该条实现“帮助”tab（`docs/roadmap.zh.md:177`）。
 2. **现有管理台与全部管理 API 都是“仅回环且非代理”**：判定依据是 `Host` 头（不是 socket 对端）+ 是否出现 `cf-*`/`x-forwarded-*` 代理头，`local = loopback && !proxied`（`src/gateway.ts:656-673`、`src/util.ts:176-195`、`src/gateway.ts:860-918`）；远端设备访问 `/mobile/admin` 直接 404（`src/gateway.ts:1100-1108`）。
-3. **最危险的集成陷阱**：如果 DSH 宿主侧“把请求转发到 `127.0.0.1:3081`”，这一跳在网关看来是**纯回环、无代理头**，会被当成 `local`，等于把管理权限交给了任何能触发这条桥接的 DSH UI 使用者——包括经隧道打开同一 DSH UI 的手机。方案设计必须先解决“宿主桥接如何自证不是本地管理员”的问题（见 §5.5）。
+3. **最危险的集成陷阱**：如果 DSH 宿主侧“把请求转发到 `127.0.0.1:3091`”，这一跳在网关看来是**纯回环、无代理头**，会被当成 `local`，等于把管理权限交给了任何能触发这条桥接的 DSH UI 使用者——包括经隧道打开同一 DSH UI 的手机。方案设计必须先解决“宿主桥接如何自证不是本地管理员”的问题（见 §5.5）。
 4. **推荐方案：`b'` 同进程宿主路由 + 轻量服务门面（不是 HTTP 桥接，也不是重写 gateway.ts）**。网关插件与工作台宿主半侧本来就运行在同一个 DSH 宿主进程中（`src/index.ts:98-302` 直接持有 `Gateway` 实例）；`Gateway` 已把能力暴露为清晰方法（`statusPayload`、`pairingPayload`、`buildHealth`、`updateRuntimeSettings`、`tunnel`、`weixin*`、`devices`、`logger.queryAudit`……），路由模块只是薄封装（`src/routes/*.ts`，共 34 条已认证路由 + 7 条公共路由）。新增 `src/workbench/*` 做门面 + 宿主路由即可，**不需要重构 1442 行的 gateway.ts**（顺带修正：`docs/roadmap.zh.md:70` 说“1372 行”，当前实际 `src/gateway.ts` 为 1442 行）。
-5. **跨源 fetch（方案 c）不可行**：网关的 `Origin` 必须与 `Host` 完全一致（`src/gateway.ts:675-688`），`Sec-Fetch-Site: cross-site` 直接拒绝；CORS 默认白名单为空（`src/gateway.ts:771-780`、`src/config.ts:158`）；会话 cookie `SameSite=Strict`（`src/gateway.ts:703-714`）；手机侧 `127.0.0.1:3081` 根本不可达。放宽这些限制等于打开 CSRF/本地管理暴露面。
+5. **跨源 fetch（方案 c）不可行**：网关的 `Origin` 必须与 `Host` 完全一致（`src/gateway.ts:675-688`），`Sec-Fetch-Site: cross-site` 直接拒绝；CORS 默认白名单为空（`src/gateway.ts:771-780`、`src/config.ts:158`）；会话 cookie `SameSite=Strict`（`src/gateway.ts:703-714`）；手机侧 `127.0.0.1:3091` 根本不可达。放宽这些限制等于打开 CSRF/本地管理暴露面。
 6. **手机场景按“只读工作台”设计最稳**：手机经网关打开 DSH UI 时，网关会向 DSH 上游注入 `x-forwarded-for`/`x-real-ip`/`x-forwarded-proto`/`x-forwarded-host`（`src/proxy.ts:183-206`），并把客户端 cookie 替换成网关持有的 DSH owner cookie（`src/proxy.ts:188-195`）。网关与工作台宿主在同一进程，最可靠的做法是让网关在代理 `/gateway-mobile/*` 时附加**进程内 HMAC 设备标记头**，DSH 侧路由校验该标记并把请求降级为只读；本机直连（无标记）才允许管理写操作。
 7. **必须继续 loopback-only 的能力**（有既有文档结论 + 代码证据）：配对码/二维码与重新生成、隧道启停/重启、微信扫码登录/审批/换绑/登出、密钥轮换、认证与运行时设置写入、审计导出、全部日志、设备永久删除/清空、设备全量列表。依据：`docs/security.zh.md:38,50,93`、`docs/roadmap.zh.md:100`、`docs/DETAIL.zh.md:28`、`docs/admin-console.zh.md:6`。
 8. **可给已配对设备的能力**已经存在且边界清晰：`/mobile/api/v1/me`、`/status`、`/session/refresh`、`/logout`、自身设备的重命名/撤销、OAuth 绑定、以及经代理访问 DSH UI 本身（`src/routes/session.ts:10-60`、`src/routes/devices.ts:12-87`、`src/gateway.ts:834-851`）。工作台**不应新增**手机端远程能力。
@@ -33,7 +33,7 @@
                                                      │ HTTP/WS
                                                      ▼
                                     ┌──────────────────────────────────┐
-                                    │ 127.0.0.1:3081  Gateway          │
+                                    │ 127.0.0.1:3091  Gateway          │
                                     │ Host/Origin 校验 → 会话/CSRF/限流 │
                                     │ /mobile/** PWA+JSON API          │
                                     │ /mobile/ws 控制通道              │
@@ -48,9 +48,9 @@
                                     └──────────────────────────────────┘
 ```
 
-- 网关只绑定回环：`config.ts:349-351` 拒绝非回环 `gateway.host`；`cordis.patch.yml:10-13` 写死 `127.0.0.1:3081`。
+- 网关只绑定回环：`config.ts:349-351` 拒绝非回环 `gateway.host`；`cordis.patch.yml:10-13` 写死 `127.0.0.1:3091`。
 - DSH 不暴露公网；公网入口由网关终止（`docs/architecture.zh.md:7-32`、`docs/security.zh.md:18-23`）。
-- 实测（只读 `GET /health?deep=1`）：`version=0.1.4`、`gateway.port=3081`、`dsh-upstream=http://127.0.0.1:3080 (HTTP 401)`、`tunnel=mode quick/connected/health ok`、`weixin=connected`、`capabilities={controller:true, workspaceRegistry:true, userQuestions:true, weixin:true}`、`dataDir=C:\Users\admin\.dsh\gateway-mobile`。
+- 实测（只读 `GET /health?deep=1`）：`version=0.1.4`、`gateway.port=3091`、`dsh-upstream=http://127.0.0.1:3080 (HTTP 401)`、`tunnel=mode quick/connected/health ok`、`weixin=connected`、`capabilities={controller:true, workspaceRegistry:true, userQuestions:true, weixin:true}`、`dataDir=C:\Users\admin\.dsh\gateway-mobile`。
 - 插件安装形态：`~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 含 `dsh-gateway-mobile`，依赖为 `link:F:/ai_workspace/dsh-gateway-mobile`；即**源码目录被 link 进 profile**，改 `lib/` 后由 DSH HMR/重启生效。
 
 ### 1.2 `src/`（发布产物 `lib/`）模块职责
@@ -220,9 +220,9 @@ isProxiedRequest: cf-connecting-ip | cf-ray | x-forwarded-host | 非空 x-forwar
 
 推论（对工作台设计至关重要）：
 
-1. **“local”不是网络对端概念，而是“Host 头看起来是回环 + 没有代理头”**。任何本机进程（包括 DSH 宿主）直连 3081 都属于 `local`。
+1. **“local”不是网络对端概念，而是“Host 头看起来是回环 + 没有代理头”**。任何本机进程（包括 DSH 宿主）直连 3091 都属于 `local`。
 2. 经 Cloudflare 的请求一定带 `cf-*` 头 → `local=false`；经普通自建反代且未配 `publicUrl` 时 Host 不是隧道 host → 直接 403（除非配置 `gateway.publicUrl`/`tunnel.domain`，`tunnel.ts:167-185`）。
-3. 宿主内“HTTP 桥接 → 127.0.0.1:3081”如果不加额外标记，必然被判定为本地管理员（`local=true`）。这与请求最初来自桌面还是手机无关。
+3. 宿主内“HTTP 桥接 → 127.0.0.1:3091”如果不加额外标记，必然被判定为本地管理员（`local=true`）。这与请求最初来自桌面还是手机无关。
 4. `requestIp` 在 `trustProxy=true`（默认，`config.ts:159`）时优先取 `cf-connecting-ip`/`x-forwarded-for`（`util.ts:120-128`），用于限流/设备记录；不参与 local 判定。
 
 ### 2.5 WebSocket 与 DSH 代理
@@ -335,7 +335,7 @@ isProxiedRequest: cf-connecting-ip | cf-ray | x-forwarded-host | 非空 x-forwar
 
 ### 5.3 手机经网关打开同一 DSH UI 的链路事实
 
-1. 手机 → Cloudflare → 网关 3081 → 认证设备会话 → 代理到 DSH 3080（`gateway.ts:782-852`）。
+1. 手机 → Cloudflare → 网关 3091 → 认证设备会话 → 代理到 DSH 3080（`gateway.ts:782-852`）。
 2. 网关替换 cookie：客户端只持有网关 `dsh_session`，DSH owner cookie 永远留在网进程内（`proxy.ts:183-206`；`docs/security.zh.md:41,67`）。
 3. 网关向上游注入 `x-forwarded-for`（真实手机 IP）、`x-real-ip`、`x-forwarded-proto`、`x-forwarded-host`（原始公网 Host）（`proxy.ts:196-200`）。
 4. 因此：**DSH 宿主的业务/界面代码无法从认证身份区分“电脑直连”与“手机经代理”**（两者在 DSH 眼里都是同一个 owner，且 cookie 由网关注入）；唯一可用的信号是这些 `x-forwarded-*` 头（或网关额外注入的标记）。
@@ -362,11 +362,11 @@ isProxiedRequest: cf-connecting-ip | cf-ray | x-forwarded-host | 非空 x-forwar
 
 ### 5.5 关键陷阱：宿主桥接的“回环自证”问题
 
-若采用“DSH 宿主路由 → HTTP 转发 `127.0.0.1:3081`”：
+若采用“DSH 宿主路由 → HTTP 转发 `127.0.0.1:3091`”：
 
 ```
-手机 → 网关(3081) → DSH(3080) → [宿主桥接] → HTTP → 网关(3081)
-                                        这一跳 Host=127.0.0.1:3081、无 cf-*/x-forwarded-* 
+手机 → 网关(3091) → DSH(3080) → [宿主桥接] → HTTP → 网关(3091)
+                                        这一跳 Host=127.0.0.1:3091、无 cf-*/x-forwarded-* 
                                         ⇒ #hostInfo 判定 local=true ⇒ 管理权限
 ```
 
@@ -374,7 +374,7 @@ isProxiedRequest: cf-connecting-ip | cf-ray | x-forwarded-host | 非空 x-forwar
 
 必须二选一：
 
-- **进程内调用（推荐）**：不经过 3081，宿主服务门面直接调用 `Gateway` 实例方法；本机/远端判定在工作台宿主侧完成（见 §6.2）。
+- **进程内调用（推荐）**：不经过 3091，宿主服务门面直接调用 `Gateway` 实例方法；本机/远端判定在工作台宿主侧完成（见 §6.2）。
 - **HTTP 桥接必须加“内部信任标记”**：网关为桥接请求新增专用通道（独立 token/HTTP 头 + 不按 loopback 判定），且桥接方必须带上“原始请求是否本地”的可信结论；否则禁止上线。
 
 补充风险：即使桥接方加 `Host: <隧道 host>` 试图伪装成远端，也会因无设备会话而被 401（`gateway.ts:871-917`），且手机 `dsh_session` 已被网关剥离（`proxy.ts:188-195`），宿主无法转发；这进一步说明“HTTP 回环桥接”不是自然可行的路线。
@@ -385,15 +385,15 @@ isProxiedRequest: cf-connecting-ip | cf-ray | x-forwarded-host | 非空 x-forwar
 
 ### 6.1 三方案对照
 
-| 维度 | (a) 宿主路由 HTTP 桥接 → `:3081` | (b) 拆分 gateway 服务模块供宿主直接调用 | (c) 客户端跨源 fetch `:3081` |
+| 维度 | (a) 宿主路由 HTTP 桥接 → `:3091` | (b) 拆分 gateway 服务模块供宿主直接调用 | (c) 客户端跨源 fetch `:3091` |
 |---|---|---|---|
-| 实现位置 | `src/index.ts` 注册 `ctx.webServer` 路由 + `fetch('http://127.0.0.1:3081/...')` | 新增 `src/workbench/*` 服务门面，直接调用现有 `Gateway`/manager 实例 | React 组件 `fetch('http://127.0.0.1:3081/mobile/api/v1/...')` |
+| 实现位置 | `src/index.ts` 注册 `ctx.webServer` 路由 + `fetch('http://127.0.0.1:3091/...')` | 新增 `src/workbench/*` 服务门面，直接调用现有 `Gateway`/manager 实例 | React 组件 `fetch('http://127.0.0.1:3091/mobile/api/v1/...')` |
 | 是否重写 `gateway.ts` | 否 | **不需要重写**：路由模块已是薄封装（`routes/*.ts`），`Gateway` 方法可直接复用；只需抽出“能力策略”层 | 否 |
-| 单一实现 | 好（3081 仍是唯一入口） | 好（同一批 Gateway 方法） | 差（客户端复制 URL/鉴权逻辑） |
+| 单一实现 | 好（3091 仍是唯一入口） | 好（同一批 Gateway 方法） | 差（客户端复制 URL/鉴权逻辑） |
 | 认证/CSRF | 需第二套内部鉴权（token/头），且要防“回环自证” | 复用宿主侧判定 + 现有 `assertCsrf` 语义；无第二跳 | 需要放开 Origin/CORS/SameSite，安全倒退 |
-| 手机区分 | 桥接方需自行获知原始请求的 remote 属性（`x-forwarded-*`），再决定 token 权限 | 同一处判定；可加进程内 HMAC 设备标记（见 §6.2） | 手机根本不可达 3081 |
+| 手机区分 | 桥接方需自行获知原始请求的 remote 属性（`x-forwarded-*`），再决定 token 权限 | 同一处判定；可加进程内 HMAC 设备标记（见 §6.2） | 手机根本不可达 3091 |
 | 额外跳数与延迟 | +1 回环 HTTP 跳（含 JSON 序列化/反序列化） | 0 | 0（但大概率失败） |
-| 失败模式 | 3081 未启动/端口冲突时工作台整体不可用（两套生命周期） | 与网关同生命周期（`src/index.ts` 已 ensure） | CORS/CSRF 403，且难以诊断 |
+| 失败模式 | 3091 未启动/端口冲突时工作台整体不可用（两套生命周期） | 与网关同生命周期（`src/index.ts` 已 ensure） | CORS/CSRF 403，且难以诊断 |
 | 可行性结论 | 可行但需要网关新增“内部桥接协议”，否则不安全 | **推荐** | **不可行**（详见 §6.3） |
 
 ### 6.2 推荐方案：`b'` 同进程宿主路由 + 轻量服务门面
@@ -435,17 +435,17 @@ export class WorkbenchService {
 - 工作台宿主半侧：标记存在 → 只读；标记缺失 → 本机。**注意方向**：伪造“标记存在”只会被降级（安全）；伪造缺失意味着本机进程（已受信）。这比“用 Host 判断”更安全，因为手机无法直接访问 3080。
 - 若 task-1 确认 DSH 宿主路由可拿到原始 `request.headers`（`dsh-host-webserver` 的 handler 收到原生 `req/res`，`lib/index.js:471`），此方案即可落地；若只能走 resource/Peer 形态，则改用 DSH 的 Remote/typert 通道，判定信号仍然相同（见 §10 开放问题）。
 
-**为什么保留 :3081 独立管理台**：用户明确“保留链接”。工作台与 `/mobile/admin` 共享同一 `Gateway` 实例与数据目录；独立页作为本机应急入口（DSH 升级、工作台注册失败时仍可用），也作为工作台“仅本机操作”的兜底链接（`http://127.0.0.1:3081/mobile/admin`）。
+**为什么保留 :3091 独立管理台**：用户明确“保留链接”。工作台与 `/mobile/admin` 共享同一 `Gateway` 实例与数据目录；独立页作为本机应急入口（DSH 升级、工作台注册失败时仍可用），也作为工作台“仅本机操作”的兜底链接（`http://127.0.0.1:3091/mobile/admin`）。
 
 ### 6.3 为什么 (c) 客户端跨源 fetch 不可行
 
-1. **Origin/Host 必须一致**：DSH UI 页面 origin 为 `http://127.0.0.1:3080`（或手机侧公网 origin），fetch 到 `http://127.0.0.1:3081` 的 `Origin` 头与该请求的 `Host`（127.0.0.1:3081）不一致 → `#checkOrigin` 403（`gateway.ts:675-688`）。
+1. **Origin/Host 必须一致**：DSH UI 页面 origin 为 `http://127.0.0.1:3080`（或手机侧公网 origin），fetch 到 `http://127.0.0.1:3091` 的 `Origin` 头与该请求的 `Host`（127.0.0.1:3091）不一致 → `#checkOrigin` 403（`gateway.ts:675-688`）。
 2. **`Sec-Fetch-Site` 会是 `cross-site`** → 拒绝（`gateway.ts:686-687`）。
 3. **CORS 默认不开**：`security.corsOrigins` 默认 `[]`（`config.ts:158`），`#applyCors` 只在白名单内回显（`gateway.ts:771-780`）；即使加白名单，也会让任意网页（包括恶意本地页面）获得管理 API 的读权限（因为请求最终是 loopback Host）。
 4. **cookie 不发送**：`SameSite=Strict`（`gateway.ts:711`）意味着跨站请求不会带上 `dsh_session`；何况管理 API 在 `local` 路径下根本不需要会话，跨源一旦放行就是 CSRF 灾难。
 5. **手机不可达**：手机浏览器里的 `127.0.0.1` 是手机自己，不是电脑（`docs/architecture.zh.md:7-32`）。
 
-> 因此“客户端直接连 :3081”不应作为实现选项；最多只能在**同一 DSH 宿主**内做同源路由。
+> 因此“客户端直接连 :3091”不应作为实现选项；最多只能在**同一 DSH 宿主**内做同源路由。
 
 ### 6.4 推荐落地形态（分阶段）
 
@@ -472,7 +472,7 @@ export class WorkbenchService {
 |---|---|
 | `src/client/workbench/index.tsx` | DSH 客户端半侧入口：`export const apply(ctx)`/`inject`，向目标槽位注册工作台页面；`window.__ModuleLoader__.load` 由构建脚本包裹 |
 | `src/client/workbench/entry.tsx` | 顶层容器与导航（概览/配对/隧道/微信/设备/日志/设置） |
-| `src/client/workbench/api.ts` | 同源调用 `/gateway-mobile/api/*`（`x-requested-with` + 错误码映射），不出现 `127.0.0.1:3081` |
+| `src/client/workbench/api.ts` | 同源调用 `/gateway-mobile/api/*`（`x-requested-with` + 错误码映射），不出现 `127.0.0.1:3091` |
 | `src/client/workbench/panels/{overview,pairing,tunnel,weixin,devices,logs,settings}.tsx` | 7 个面板；**手机只读 props** 由宿主返回值驱动 |
 | `src/client/workbench/styles.css` | 样式；构建时内联/注入（见 §7.2） |
 | `src/client/workbench/types.ts` | 与 `src/workbench/api-types.ts` 共享的 DTO 类型 |
@@ -494,7 +494,7 @@ export class WorkbenchService {
 | `docs/next/`（后续文档） | 工作台使用说明、安全边界说明 |
 
 **明确不改**
-- `src/gateway.ts` 的 1442 行结构与现有准入/认证/代理逻辑；不迁移路由；不改变 `:3081` 行为与 CSP。
+- `src/gateway.ts` 的 1442 行结构与现有准入/认证/代理逻辑；不迁移路由；不改变 `:3091` 行为与 CSP。
 - `web/src/admin.ts`、`web/admin.html`、`web/assets/*`、`scripts/build-web.mjs`（保持独立管理台现状）。
 
 ### 6.6 手机场景的落地细节
@@ -503,7 +503,7 @@ export class WorkbenchService {
 2. **二维码**：宿主在“本机”才返回 `pairingPayload`（含 `qrSvg`）；手机请求返回 `{valid, expiresIn, used}` 摘要（等价于现有公共 `pairing/status`，`pairing.ts:88-93`），因此手机端不可能截获一次性码。
 3. **微信**：手机只显示 `state/owner.masked/notify 摘要`；QR/审批按钮不渲染（服务端拒绝）。
 4. **隧道**：手机显示状态 + 公网地址（现有 `/status` 已含 `publicBase`，`gateway.ts:628-649`），启停按钮隐藏/禁用。
-5. **链接保留**：工作台内“打开独立管理台”链接在桌面可点（`http://127.0.0.1:3081/mobile/admin`）；在手机上提示“仅本机可访问”，不发起请求。
+5. **链接保留**：工作台内“打开独立管理台”链接在桌面可点（`http://127.0.0.1:3091/mobile/admin`）；在手机上提示“仅本机可访问”，不发起请求。
 6. **Quick Tunnel 换域名**：沿用 `previousUrl/urlChangedAt` 横幅（`admin.ts:1028-1055`），避免工作台与独立管理台两套提示逻辑分叉。
 
 ---
@@ -614,7 +614,7 @@ await build({
 | 更早版本序列 | `d1697af` 0.1.0 → `d4e6e0a` 0.1.1 → `bccce38` 0.1.2 → `b72835f` 0.1.3 → `e7535e6` 0.1.4 |
 | 无 git tag | `git tag -l` 为空；远端只有 `origin/main`，当前分支 `next` |
 | `dist/` 是**旧构建** | `dist/dsh-gateway-mobile-0.1.4.zip` 内的 `web/admin.html=48918B`、`web/assets/admin.js=118255B`、`web/src/admin.ts=105995B`；当前工作树分别为 `46574B`、`121026B`、`110973B`（即 dist 产自 `8783645` 之前） |
-| 运行实例版本 | 实测 `GET http://127.0.0.1:3081/health` → `version=0.1.4` |
+| 运行实例版本 | 实测 `GET http://127.0.0.1:3091/health` → `version=0.1.4` |
 
 **解释**：`git log` 里出现两个 0.1.4 提交是“同一版本迭代未升号”的结果，不是版本不一致；`package.json` 与 README/CHANGELOG/运行实例均为 0.1.4。**风险在于分发物**：`dist/*.0.1.4.zip` 与“今天重新 `npm run pack` 得到的 0.1.4”内容不同，若直接复用版本号发布，会造成“同版本不同字节”。因此本次工作台不应继续使用 0.1.4。
 
@@ -641,7 +641,7 @@ await build({
 | `npm run build` | `tsc` + `build:web`（`scripts/build-web.mjs`） | 增加 `build:client`；必须保持 build.json/PWA 行为不变 |
 | `npm test` | 先 build，再 `node --test test/*.test.js`；实测 **127 个 `test()`**（`docs/development.zh.md:8` 的“117 个”已过期） | 新增工作台单测（策略层：本机/远端能力集、HMAC 标记、CSRF、错误码）；现有静态 UI 测试（`test/admin-ui.test.js`）应保持不变 |
 | `npm run typecheck` | `tsc -p tsconfig.json --noEmit` + `tsc -p web/tsconfig.json` | 增加 `tsconfig.client.json` 项目；JSX 严格模式下也要 `noUncheckedIndexedAccess`/`exactOptionalPropertyTypes` |
-| `npm run test:integration` | 真实 DSH：建临时 profile、link 插件、关隧道、起 dsh web，覆盖 health/本地 admin/配对/代理 HTML/Remote mux（`scripts/integration-check.mjs:83-161`） | 增加工作台宿主动作的冒烟：本机可读配对码、模拟 `x-forwarded-*` 后只读、未知 Origin 403；并验证 3081 独立管理台仍工作 |
+| `npm run test:integration` | 真实 DSH：建临时 profile、link 插件、关隧道、起 dsh web，覆盖 health/本地 admin/配对/代理 HTML/Remote mux（`scripts/integration-check.mjs:83-161`） | 增加工作台宿主动作的冒烟：本机可读配对码、模拟 `x-forwarded-*` 后只读、未知 Origin 403；并验证 3091 独立管理台仍工作 |
 | `npm run hmr-check` | 启动真实 dsh web，touch `lib/index.js` 验证重载后端口仍健康（`docs/development.zh.md:90-104`） | 客户端 bundle 变化 + 宿主路由重注册；需确认重载后 `/gateway-mobile/**` 仍可用且不重复注册 |
 | `npm run check-docs` | 校验 package version/engines、README 状态行、CHANGELOG 首版本、DETAIL/API/architecture-flow/deviations 版本引用（`scripts/check-docs.mjs:1-11,90-190`） | **版本号一改必须同步**；若用 `0.2.0-next.0`，现有正则只接受 `X.Y.Z`（README 状态 `\d+\.\d+\.\d+`、CHANGELOG `## (\d+\.\d+\.\d+)`，`check-docs.mjs:107-140`）→ 会误报/失败，需要同步放宽为 semver 预发布 |
 | `npm run doctor` | 只读自检（Node/DSH/cloudflared/端口/dataDir/profile/密钥） | 可增加“客户端 bundle 是否存在/`dsh.client` 声明有效”检查（可选） |

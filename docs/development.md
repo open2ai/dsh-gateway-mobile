@@ -91,7 +91,7 @@ version against `engines.dsh`, cloudflared availability (PATH, `CLOUDFLARED_PATH
 dataDir writability, whether a DSH profile links this plugin, and whether secret material
 exists. It never prints tokens, pairing codes or key contents. Each finding comes with a
 suggested fix; any ❌ exits 1, and `--strict` also exits 1 for ⚠. The configured port is
-read from the linked profile's `cordis.patch.yml` (best effort) and defaults to 3081;
+read from the linked profile's `cordis.patch.yml` (best effort) and defaults to 3091;
 `DSH_HOME` and `DSH_GATEWAY_DATA_DIR` override the location of the DSH home/data dir.
 
 ## Diagnostics: hot-reload check

@@ -470,6 +470,19 @@ export class Gateway {
     }
   }
 
+  /** Whether the standalone loopback admin page is still exposed (compatibility mode). */
+  adminConsoleEnabled(): boolean {
+    return this.settingsStore?.values.adminConsoleEnabled !== false
+  }
+
+  /** Toggle the standalone admin page; persisted and applied immediately. */
+  async updateAdminConsoleEnabled(value: unknown): Promise<boolean> {
+    if (typeof value !== 'boolean') throw new GatewayError(CODES.INVALID_PARAMS, { field: 'adminConsoleEnabled' })
+    await this.settingsStore?.save({ adminConsoleEnabled: value })
+    this.logger.audit({ action: 'admin.console.toggle', enabled: value })
+    return value
+  }
+
   /**
    * Apply and persist runtime switches without restarting the host. Long-running
    * side effects (tunnel process, WeChat polling) are started or stopped here.
@@ -811,6 +824,13 @@ export class Gateway {
     // Public static assets and the pairing page.
     if (this.#isPublicStatic(pathname)) {
       await this.#serveStatic(req, res, pathname, info)
+      return
+    }
+
+    // The standalone admin page is a compatibility surface; the DSH workbench
+    // is the primary UI. Disabling it keeps the loopback APIs available.
+    if ((pathname === '/mobile/admin' || pathname === '/mobile/admin/') && !this.adminConsoleEnabled()) {
+      this.sendJson(req, res, CODES.NOT_SUPPORTED, {}, 404)
       return
     }
 

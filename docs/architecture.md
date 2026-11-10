@@ -11,7 +11,7 @@
                           └────────────────────┘                            │ HTTP/WS
                                                                              ▼
                                                          ┌───────────────────────────────────┐
-                                                         │ 127.0.0.1:3081                    │
+                                                         │ 127.0.0.1:3091                    │
                                                          │ dsh-gateway-mobile                │
                                                          │  ├─ Host/Origin fence             │
                                                          │  ├─ session auth + rate limit     │

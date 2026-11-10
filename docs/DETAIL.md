@@ -19,7 +19,7 @@ Expose your local `dsh web` to a phone through an outbound **Cloudflare Quick Tu
 
 - DSH `0.2.2-rc.1` (exact `engines.dsh` match).
 - cloudflared (the plugin tries to download it when missing).
-- The admin console is loopback-only: `http://127.0.0.1:3081/mobile/admin`.
+- The admin console is loopback-only: `http://127.0.0.1:3091/mobile/admin`.
 
 ## Security model
 

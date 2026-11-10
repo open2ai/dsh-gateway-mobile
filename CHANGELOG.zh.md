@@ -28,6 +28,10 @@
 - 微信扫码登录、pending 连接审批、退出登录与审批历史迁移到工作台（仅本机接口 `admin/weixin/login`
   GET/POST、`admin/weixin/approve`、`admin/weixin/logout`、`read/weixin/approvals`）。独立管理台保留为兼容入口。
 - 工作台已覆盖管理台的维护流程；剩余设备重命名/撤销迁移过去后，独立管理页即可退役。
+- 设备页支持重命名、撤销、永久删除与清理（仅本机接口 `admin/devices/rename|revoke|delete|purge`）。
+- 兼容开关：设置 → 安全与维护 → 独立管理台可关闭独立页面（关闭后页面返回 404，回环 API 仍可用），
+  页头「打开独立管理台」链接同时隐藏。
+- 网关默认端口从 `3081` 改为 `3091`，书签/反代需要同步修改。
 - 布局遵循 DSH 主面板页面契约：标题与页签固定，只有页签内容滚动；表格与日志按需保持单行。
 - 版本号升级到 `0.2.0-next.0`，用于 npm `next` dist-tag；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`。
 - 执行 `npm run build` 后需要重启一次 `dsh web`（DSH 会缓存客户端 bundle 清单直到重启）。

@@ -12,7 +12,7 @@ Configuration lives in the `config` object of the `gateway-mobile` row in your p
     dataDir: ''                     # default: $DSH_HOME/gateway-mobile
     gateway:
       host: '127.0.0.1'             # loopback only
-      port: 3081
+      port: 3091
       publicUrl: ''                 # optional: Named Tunnel / own reverse proxy
     tunnel:
       enabled: true

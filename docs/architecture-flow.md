@@ -10,7 +10,7 @@
 Plain-text topology:
 
 ```text
-Phone browser --HTTPS--> Cloudflare Edge --outbound tunnel--> Gateway 127.0.0.1:3081
+Phone browser --HTTPS--> Cloudflare Edge --outbound tunnel--> Gateway 127.0.0.1:3091
                                                                                       |
 WeChat user --> WeChat iLink <--long poll / sendmessage-------------------------------+
                                                                                       | HTTP / WebSocket reverse proxy
@@ -37,7 +37,7 @@ flowchart LR
   end
 
   subgraph Host["Local DSH Host"]
-    GW["dsh-gateway-mobile<br/>127.0.0.1:3081"]
+    GW["dsh-gateway-mobile<br/>127.0.0.1:3091"]
     DSH["dsh web<br/>127.0.0.1:3080"]
     FS["local data directory<br/>$DSH_HOME/gateway-mobile"]
   end
@@ -54,7 +54,7 @@ flowchart LR
 Key boundaries:
 
 - DSH listens only on the loopback address and is never exposed to the public internet directly.
-- The only public entry point is the Cloudflare Quick Tunnel, terminating at the plugin's `127.0.0.1:3081`.
+- The only public entry point is the Cloudflare Quick Tunnel, terminating at the plugin's `127.0.0.1:3091`.
 - WeChat does not go through Cloudflare; the plugin actively long-polls and sends messages through iLink.
 - The admin console is reachable only from the local machine's loopback interface.
 
@@ -152,7 +152,7 @@ flowchart TB
 sequenceDiagram
   participant L as Cordis Loader
   participant I as src/index.ts
-  participant G as Gateway 3081
+  participant G as Gateway 3091
   participant T as Tunnel
   participant W as WeixinChannel
   participant B as WeixinBridge
@@ -160,7 +160,7 @@ sequenceDiagram
 
   L->>I: load the gateway-mobile plugin
   I->>I: normalizeConfig + init data directory / secret / logger / devices / settings
-  I->>G: create and listen on 127.0.0.1:3081
+  I->>G: create and listen on 127.0.0.1:3091
   I->>T: start Quick Tunnel in the background
   I->>W: restore WeChat credentials (if any)
   I->>B: start the bridge
@@ -185,7 +185,7 @@ Processing order:
 sequenceDiagram
   participant P as Phone browser
   participant E as Cloudflare Edge
-  participant G as Gateway 3081
+  participant G as Gateway 3091
   participant D as DSH Web 3080
 
   P->>E: HTTPS /mobile/pair
@@ -379,7 +379,7 @@ Characteristics:
 
 ```mermaid
 flowchart LR
-  Admin["local browser<br/>127.0.0.1:3081/mobile/admin"] --> Gateway["Gateway"]
+  Admin["local browser<br/>127.0.0.1:3091/mobile/admin"] --> Gateway["Gateway"]
   Gateway -->|static assets| Web["web/admin.html + admin.ts + admin.css"]
   Gateway -->|GET/POST admin API| Services["pairing / devices / tunnel / WeChat / logs / settings"]
   Services --> Store["$DSH_HOME/gateway-mobile"]

@@ -57,6 +57,9 @@ const JSON_HEADERS = {
   'cache-control': 'no-store',
 } as const
 
+/** One-time pairing device identifiers use this shape. */
+const DEVICE_ID = /^dev_[a-f0-9]{16}$/
+
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), { status, headers: JSON_HEADERS })
 }
@@ -100,6 +103,7 @@ function pingPayload(gateway: Gateway, version: string, local: boolean): Record<
       publicBase: status.gateway.publicBase,
       uptime: status.gateway.uptime,
       adminUrl: `${gateway.origin}/mobile/admin`,
+      adminConsoleEnabled: gateway.adminConsoleEnabled(),
     },
     tunnel: {
       enabled: tunnel.enabled,
@@ -126,6 +130,7 @@ function deviceList(gateway: Gateway): PublicDevice[] {
 function settingsPayload(gateway: Gateway): Record<string, unknown> {
   return {
     version: gateway.version,
+    adminConsoleEnabled: gateway.adminConsoleEnabled(),
     ...gateway.authSettings(),
     runtime: gateway.runtimeSettings(),
     restartRequired: [],
@@ -270,9 +275,11 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
         }
         const hasAuth = Object.keys(authPatch).length > 0
         const hasRuntime = Object.keys(runtimePatch).length > 0
-        if (!hasAuth && !hasRuntime) return errorResponse('没有可更新的设置', 400, 1002)
+        const hasAdminConsole = 'adminConsoleEnabled' in body
+        if (!hasAuth && !hasRuntime && !hasAdminConsole) return errorResponse('没有可更新的设置', 400, 1002)
         if (hasAuth) await gateway.updateAuthSettings(authPatch)
         if (hasRuntime) await gateway.updateRuntimeSettings(runtimePatch)
+        if (hasAdminConsole) await gateway.updateAdminConsoleEnabled(body.adminConsoleEnabled)
         return json(settingsPayload(gateway))
       }),
     },
@@ -456,6 +463,68 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
         gateway.config.auth.oauthAllowedUsers = allowedUsers
         await gateway.settingsStore?.save({ oauthAllowedUsers: allowedUsers })
         return json(oauthPayload(gateway))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/devices/rename',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as { deviceId?: unknown; deviceName?: unknown }
+        if (typeof body.deviceId !== 'string' || !DEVICE_ID.test(body.deviceId) || typeof body.deviceName !== 'string') {
+          return errorResponse('设备参数无效', 400, 1002)
+        }
+        gateway.devices.rename(body.deviceId, body.deviceName)
+        return json({ devices: deviceList(gateway) })
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/devices/revoke',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as { deviceId?: unknown }
+        if (typeof body.deviceId !== 'string' || !DEVICE_ID.test(body.deviceId)) {
+          return errorResponse('设备参数无效', 400, 1002)
+        }
+        gateway.devices.revoke(body.deviceId)
+        return json({ devices: deviceList(gateway) })
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/devices/delete',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as { deviceId?: unknown }
+        if (typeof body.deviceId !== 'string' || !DEVICE_ID.test(body.deviceId)) {
+          return errorResponse('设备参数无效', 400, 1002)
+        }
+        try {
+          gateway.devices.remove(body.deviceId)
+        } catch (cause) {
+          return errorResponse(cause instanceof Error ? cause.message : String(cause), 409, 3003)
+        }
+        return json({ devices: deviceList(gateway) })
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/devices/purge',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as { confirmText?: unknown }
+        if (body.confirmText !== 'DELETE REVOKED') return errorResponse('确认文本不匹配', 400, 1002)
+        const deleted = gateway.devices.purgeInactive()
+        return json({ deleted, devices: deviceList(gateway) })
       }),
     },
   ]

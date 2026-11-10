@@ -34,6 +34,11 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
   `read/weixin/approvals`). The standalone console remains as a compatibility fallback.
 - The workbench now covers the admin-console maintenance flows; the standalone page can be retired
   after the remaining device rename/revoke actions move over.
+- Device rename, revoke, permanent delete and purge are available in the 设备 tab (local-only
+  `admin/devices/rename|revoke|delete|purge`).
+- Compatibility switch: 设置 → 安全与维护 → 独立管理台 can disable the standalone page (it then
+  answers 404 while loopback APIs stay available). The header link hides when disabled.
+- Default gateway port is now `3091` (was `3081`); update any bookmarks or reverse proxies.
 - Layout follows the DSH main-panel page contract: header and tabs stay frozen, only the tab content
   scrolls, and tables/logs keep one-line cells where they must not wrap.
 - Version bumped to `0.2.0-next.0` for the npm `next` dist-tag; `engines.dsh` stays pinned to `0.2.2-rc.1`.

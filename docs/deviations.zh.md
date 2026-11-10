@@ -11,7 +11,7 @@
 | `require('cordis')`、`exports.*`、`exports.Config`、`ctx.plugin.config` | DSH 是 ESM + Cordis 4；插件导出 `name`、`inject`、`apply(ctx, config)` | `lib/index.js` 使用 ESM 导出；config 是 `apply` 的第二个参数 |
 | `inject: { db: true, i18n: true }` | 基础 web profile 中没有 `db`/`i18n` 服务 | `inject = ['webServer', 'connection']`；不使用 DB/i18n 服务 |
 | `ctx.get('dsh/session')`、`ctx.get('apiproxy')` | 不属于随附的 web profile | 未使用；网关对协议保持透明 |
-| `ctx.get('webserver')` / `apiProxy.serveStatic` | 服务是 `ctx.webServer`；静态文件服务由 `dsh-host-frontend-static` 负责 | 网关是 3081 上的**旁路 HTTP server**，自行提供 `/mobile` 页面 |
+| `ctx.get('webserver')` / `apiProxy.serveStatic` | 服务是 `ctx.webServer`；静态文件服务由 `dsh-host-frontend-static` 负责 | 网关是 3091 上的**旁路 HTTP server**，自行提供 `/mobile` 页面 |
 | `ctx.on('dsh/session-created')`、`approval-requested` | 基础 web profile 中没有这类 Cordis 事件 | 推迟；审批仍以官方 DSH UI 为准 |
 | DSH `>=1.5.0`；`cordis.patch.yml` 新 API | 实际安装/验证的是 `0.2.2-rc.1` | `engines.dsh: 0.2.2-rc.1`；bundle patch 使用当前 loader |
 | `package.json` `peerDependencies.dsh` | `dsh` 不是包名；CLI 是 `@deepseek-ai/dsh` | 仅使用 `engines.dsh` 范围 |

@@ -18,7 +18,7 @@
 ## Trust boundaries
 
 1. **Phone ↔ Cloudflare edge**: public TLS; Cloudflare terminates TLS and can see plaintext. This is inherent to Quick Tunnel.
-2. **Cloudflare edge ↔ local gateway**: outbound tunnel; Cloudflare originates requests to `127.0.0.1:3081`.
+2. **Cloudflare edge ↔ local gateway**: outbound tunnel; Cloudflare originates requests to `127.0.0.1:3091`.
 3. **Gateway ↔ DSH**: loopback; gateway holds DSH's cookie and rewrites Host/Origin to DSH's loopback authority.
 4. **DSH ↔ untrusted web/file content**: prompt-injection boundary; the gateway cannot fix it, only reduce approval mistakes.
 

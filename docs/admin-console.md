@@ -2,8 +2,8 @@
 
 [English](./admin-console.md) | [中文](./admin-console.zh.md)
 
-`http://127.0.0.1:3081/mobile/admin` — short bookmark alias
-`http://127.0.0.1:3081/admin`; also available via `npm run admin`. Loopback only. The
+`http://127.0.0.1:3091/mobile/admin` — short bookmark alias
+`http://127.0.0.1:3091/admin`; also available via `npm run admin`. Loopback only. The
 page and admin APIs work without a device session on first run so the pairing QR can be
 shown before any phone is paired. The admin console is a zh-CN operator surface; the
 phone PWA pages follow the browser language (zh/en).

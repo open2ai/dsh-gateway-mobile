@@ -91,6 +91,7 @@ interface PingView {
     publicBase: string
     uptime: number
     adminUrl: string
+    adminConsoleEnabled?: boolean
   }
   tunnel: TunnelView
   devices: { active: number; online: number }
@@ -132,6 +133,7 @@ interface LogItem {
 
 interface SettingsView {
   version?: string
+  adminConsoleEnabled?: boolean
   sessionMaxAge?: number
   pairingTokenExpiry?: number
   limits?: { sessionMin?: number; sessionMax?: number; pairingMin?: number; pairingMax?: number }
@@ -165,6 +167,7 @@ const STYLE = `
 .gwmb-btn:active { background: var(--dsw-alias-interactive-bg-active); }
 .gwmb-btn:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
 .gwmb-btn:disabled { opacity: .5; cursor: default; }
+.gwmb-btn-sm { padding: 3px 8px; font-size: 12px; }
 .gwmb-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--dsw-alias-border-l1); padding-bottom: 6px; }
 .gwmb-tab { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 14px; padding: 7px 12px; border-radius: var(--dsw-radius-md, 10px); cursor: pointer; }
 .gwmb-tab:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -212,13 +215,14 @@ const STYLE = `
 .gwmb-table th, .gwmb-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); vertical-align: top; }
 .gwmb-table th { font-size: 12px; color: var(--dsw-alias-label-tertiary); font-weight: 500; white-space: nowrap; }
 .gwmb-table-wrap { width: 100%; overflow-x: auto; }
-.gwmb-devices-table { table-layout: fixed; min-width: 780px; }
+.gwmb-devices-table { table-layout: fixed; min-width: 960px; }
 .gwmb-devices-table td { vertical-align: middle; }
-.gwmb-devices-table th:nth-child(1), .gwmb-devices-table td:nth-child(1) { width: 36%; }
-.gwmb-devices-table th:nth-child(2), .gwmb-devices-table td:nth-child(2) { width: 104px; }
-.gwmb-devices-table th:nth-child(3), .gwmb-devices-table td:nth-child(3) { width: 150px; }
-.gwmb-devices-table th:nth-child(4), .gwmb-devices-table td:nth-child(4) { width: 150px; }
-.gwmb-devices-table th:nth-child(5), .gwmb-devices-table td:nth-child(5) { width: 120px; }
+.gwmb-devices-table th:nth-child(1), .gwmb-devices-table td:nth-child(1) { width: 32%; }
+.gwmb-devices-table th:nth-child(2), .gwmb-devices-table td:nth-child(2) { width: 100px; }
+.gwmb-devices-table th:nth-child(3), .gwmb-devices-table td:nth-child(3) { width: 140px; }
+.gwmb-devices-table th:nth-child(4), .gwmb-devices-table td:nth-child(4) { width: 140px; }
+.gwmb-devices-table th:nth-child(5), .gwmb-devices-table td:nth-child(5) { width: 110px; }
+.gwmb-devices-table th:nth-child(6), .gwmb-devices-table td:nth-child(6) { width: 176px; }
 .gwmb-nowrap { white-space: nowrap; }
 .gwmb-device-name, .gwmb-device-ua { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gwmb-device-name { color: var(--dsw-alias-label-primary); }
@@ -673,6 +677,9 @@ function PairingTab(): ReactElement {
 function DevicesTab(): ReactElement {
   const [devices, setDevices] = useState<DeviceView[] | null>(null)
   const [error, setError] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState('')
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -690,6 +697,62 @@ function DevicesTab(): ReactElement {
     return () => window.clearInterval(timer)
   }, [load])
 
+  const applyAction = async (
+    deviceId: string,
+    action: 'rename' | 'revoke' | 'delete',
+    body: Record<string, unknown>,
+  ): Promise<void> => {
+    setBusy(deviceId)
+    setActionError('')
+    setMessage('')
+    try {
+      const payload = await apiPost<{ devices: DeviceView[] }>(`/api/gateway-mobile/admin/devices/${action}`, body)
+      setDevices(payload.devices)
+      setMessage(action === 'rename' ? '设备已重命名' : action === 'revoke' ? '设备已撤销' : '设备记录已删除')
+    } catch (cause) {
+      setActionError(messageOf(cause))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const rename = (device: DeviceView): void => {
+    const current = device.displayName || device.deviceName
+    const name = window.prompt('设备名称', current)
+    if (name === null || name.trim() === '') return
+    void applyAction(device.deviceId, 'rename', { deviceId: device.deviceId, deviceName: name.trim() })
+  }
+
+  const revoke = (device: DeviceView): void => {
+    const name = device.displayName || device.deviceName
+    if (!window.confirm(`撤销设备「${name}」？该设备会立即失效。`)) return
+    void applyAction(device.deviceId, 'revoke', { deviceId: device.deviceId })
+  }
+
+  const remove = (device: DeviceView): void => {
+    if (!window.confirm('永久删除该设备记录？只有已撤销或已过期的记录可以删除。')) return
+    void applyAction(device.deviceId, 'delete', { deviceId: device.deviceId })
+  }
+
+  const purge = async (): Promise<void> => {
+    if (!window.confirm('删除所有已撤销/已过期的设备记录？此操作不可恢复。')) return
+    setBusy('purge')
+    setActionError('')
+    setMessage('')
+    try {
+      const payload = await apiPost<{ deleted: number; devices: DeviceView[] }>(
+        '/api/gateway-mobile/admin/devices/purge',
+        { confirmText: 'DELETE REVOKED' },
+      )
+      setDevices(payload.devices)
+      setMessage(`已清理 ${payload.deleted} 条记录`)
+    } catch (cause) {
+      setActionError(messageOf(cause))
+    } finally {
+      setBusy('')
+    }
+  }
+
   if (error) {
     return (
       <ErrorCard title="设备列表不可用">
@@ -700,10 +763,19 @@ function DevicesTab(): ReactElement {
 
   return (
     <section className="gwmb-card">
-      <h3>已配对设备（{devices?.length ?? 0}）</h3>
-      <div className="gwmb-meta" style={{ marginBottom: 8 }}>
-        只读视图；重命名、撤销与清理请在独立管理台完成。
+      <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
+        <h3>已配对设备（{devices?.length ?? 0}）</h3>
+        <div className="gwmb-actions">
+          <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={busy !== ''} onClick={() => void purge()}>
+            {busy === 'purge' ? '清理中…' : '清理已撤销/过期'}
+          </button>
+        </div>
       </div>
+      <div className="gwmb-meta" style={{ marginBottom: 8 }}>
+        重命名、撤销与清理直接在这里操作；手机端设备页不显示这些按钮。
+      </div>
+      {message ? <div className="gwmb-meta gwmb-ok">{message}</div> : null}
+      {actionError ? <div className="gwmb-meta gwmb-bad">{actionError}</div> : null}
       <div className="gwmb-table-wrap">
         <table className="gwmb-table gwmb-devices-table">
           <thead>
@@ -713,6 +785,7 @@ function DevicesTab(): ReactElement {
               <th>最近活动</th>
               <th>创建时间</th>
               <th>IP</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -720,6 +793,7 @@ function DevicesTab(): ReactElement {
               const tone = device.revoked || device.expired ? 'gwmb-bad' : device.isOnline ? 'gwmb-ok' : 'gwmb-warn'
               const state = device.revoked ? '已撤销' : device.expired ? '已过期' : device.isOnline ? '在线' : '离线'
               const name = device.displayName || device.deviceName
+              const removable = device.revoked || device.expired
               return (
                 <tr key={device.deviceId}>
                   <td className="gwmb-device-cell">
@@ -737,12 +811,44 @@ function DevicesTab(): ReactElement {
                   <td className="gwmb-nowrap">{formatShortTime(device.lastActiveAt)}</td>
                   <td className="gwmb-nowrap">{formatShortTime(device.createdAt)}</td>
                   <td className="gwmb-code gwmb-nowrap">{device.lastIp || '—'}</td>
+                  <td className="gwmb-nowrap">
+                    <div className="gwmb-actions">
+                      <button
+                        className="gwmb-btn gwmb-btn-sm"
+                        type="button"
+                        disabled={busy !== ''}
+                        onClick={() => rename(device)}
+                      >
+                        重命名
+                      </button>
+                      {!device.revoked ? (
+                        <button
+                          className="gwmb-btn gwmb-btn-sm"
+                          type="button"
+                          disabled={busy !== ''}
+                          onClick={() => revoke(device)}
+                        >
+                          撤销
+                        </button>
+                      ) : null}
+                      {removable ? (
+                        <button
+                          className="gwmb-btn gwmb-btn-sm"
+                          type="button"
+                          disabled={busy !== ''}
+                          onClick={() => remove(device)}
+                        >
+                          删除
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
                 </tr>
               )
             })}
             {devices !== null && devices.length === 0 ? (
               <tr>
-                <td colSpan={5} className="gwmb-muted">
+                <td colSpan={6} className="gwmb-muted">
                   还没有已配对设备。
                 </td>
               </tr>
@@ -824,6 +930,7 @@ interface SettingsForm {
   weixinEnabled: boolean
   logLevel: string
   proxyTimeoutMs: string
+  adminConsoleEnabled: boolean
 }
 
 function toSettingsForm(settings: SettingsView): SettingsForm {
@@ -834,6 +941,7 @@ function toSettingsForm(settings: SettingsView): SettingsForm {
     weixinEnabled: settings.runtime?.weixinEnabled !== false,
     logLevel: settings.runtime?.logLevel ?? 'info',
     proxyTimeoutMs: settings.runtime?.proxyRequestTimeoutMs ? String(settings.runtime.proxyRequestTimeoutMs) : '',
+    adminConsoleEnabled: settings.adminConsoleEnabled !== false,
   }
 }
 
@@ -1002,6 +1110,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
         tunnelEnabled: form.tunnelEnabled,
         weixinEnabled: form.weixinEnabled,
         logLevel: form.logLevel,
+        adminConsoleEnabled: form.adminConsoleEnabled,
       }
       if (form.proxyTimeoutMs.trim() !== '') {
         patch.proxyRequestTimeoutMs = Math.round(Number(form.proxyTimeoutMs))
@@ -1424,6 +1533,21 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
             </div>
           </div>
 
+          <div className="gwmb-form-row">
+            <span>独立管理台（兼容模式）</span>
+            <select
+              className="gwmb-select"
+              value={form.adminConsoleEnabled ? 'on' : 'off'}
+              onChange={(event) => update('adminConsoleEnabled', event.target.value === 'on')}
+            >
+              <option value="on">启用（本机可打开 /mobile/admin）</option>
+              <option value="off">禁用（只用工作台）</option>
+            </select>
+            <span className="gwmb-meta gwmb-muted">
+              禁用后独立页面与 /admin 跳转返回 404，回环 API 仍保留；工作台成为唯一管理入口。
+            </span>
+          </div>
+
           <div className="gwmb-form-row gwmb-form-wide">
             <span>OAuth 白名单</span>
             <textarea
@@ -1486,7 +1610,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
 
       <div className="gwmb-meta gwmb-muted">
-        修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。设备重命名/撤销仍在独立管理台完成。
+        修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。独立管理台可在「安全与维护」中关闭，之后工作台即为唯一管理入口。
       </div>
     </>
   )
@@ -1570,7 +1694,7 @@ function WorkbenchPage(): ReactElement {
           <button className="gwmb-btn" type="button" onClick={() => void load()} disabled={loading}>
             {loading ? '刷新中…' : '刷新'}
           </button>
-          {loopback && adminUrl ? (
+          {loopback && adminUrl && ping?.gateway.adminConsoleEnabled !== false ? (
             <a className="gwmb-btn" href={adminUrl} target="_blank" rel="noreferrer">
               打开独立管理台
             </a>

@@ -73,7 +73,7 @@
 { "code": 0, "data": {
   "ok": true, "version": "0.1.4", "startedAt": "…", "uptime": 42, "serverTime": "…",
   "checks": [
-    { "name": "gateway", "ok": true, "data": { "port": 3081 } },
+    { "name": "gateway", "ok": true, "data": { "port": 3091 } },
     { "name": "storage", "ok": true, "data": { "dataDir": "…" } },
     { "name": "dsh-upstream", "ok": true, "detail": "HTTP 401", "data": { "origin": "http://127.0.0.1:3080" } },
     { "name": "tunnel", "ok": true, "optional": true, "detail": "connected" },

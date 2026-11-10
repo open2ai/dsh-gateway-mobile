@@ -205,7 +205,7 @@ async function main() {
   const dataDir = path.resolve(
     process.env.DSH_GATEWAY_DATA_DIR || topLevelValue(configPatch, 'dataDir') || path.join(dshHome, 'gateway-mobile'),
   )
-  const gatewayPort = Number(sectionValue(configPatch, 'gateway', 'port') ?? 3081)
+  const gatewayPort = Number(sectionValue(configPatch, 'gateway', 'port') ?? 3091)
   const tunnelEnabled = (sectionValue(configPatch, 'tunnel', 'enabled') ?? 'true').toLowerCase() !== 'false'
   const tunnelMode = (sectionValue(configPatch, 'tunnel', 'mode') ?? 'quick').toLowerCase()
   const tunnelBinaryPath = sectionValue(configPatch, 'tunnel', 'binaryPath') ?? ''

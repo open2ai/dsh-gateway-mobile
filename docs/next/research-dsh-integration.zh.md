@@ -21,7 +21,7 @@
 | “整页工作台 + 导航入口”最可行方案？ | **`main`（keyed，key=`gateway-workbench`）+ `sidebar.panellist`（list，id 同 key，带 icon 与 label）**。与官方 Plugins 页完全同构 | `$INSTALL/dsh-client-ui-plugin-manager/lib/client.js:7680,7744-7760,7820-7826`；`$SRC/packages/client/ui-plugin-manager/src/client/index.ts:113-157` |
 | 宿主↔浏览器通信首选？ | **宿主插件用 `ctx.connection.fetch.register()` 在 `/api` 下注册精确 Fetch 路由**，浏览器同源 `fetch()`。自动继承 DSH 的 Host/Origin 栅栏 + 浏览器会话认证（owner-only），无 CORS、无 CSRF token 负担 | `$INSTALL/dsh-client-connection/lib/index.js:820-838`（精确路由分发、非 owner 403）、`:702-779`（admit/trust）；类型 `$INSTALL/dsh-client-connection/lib/types/rpc.d.ts:119-140` |
 | 能否用 typert Remote？ | **技术上能，但第三方成本高、风险大**：需要宿主侧 `./typert` 严格描述符 + 客户端侧手写 `typert.remote-client` 并 `ctx.remote.$mount()`。官方生成器 `@deepseek-ai/dsh-typert-generator` 不在安装态，第三方需手写生成物格式 | `$SRC/docs/api-gateway.zh.md:82`（api-remotes 显式选择，不可运行时发现）、`:111-122`（生成物）；`$INSTALL/dsh-api-remotes/lib/client.js:28313`（`$mount`）；`$INSTALL/dsh-client-connection...` 不相关 |
-| 客户端直连插件自带 `:3081`？ | **不可行/不推荐**：跨源（3080 vs 3081）、网关 CORS 白名单 + Origin/Host 校验、网关会话 Cookie `SameSite=Strict` 且 host-only；手机根本到不了 `127.0.0.1:3081` | 仓库 `src/gateway.ts:675-688`（Origin 校验）、`:703-714`（SameSite=Strict）、`:771-780`（CORS 白名单）；`src/proxy.ts:180-205` |
+| 客户端直连插件自带 `:3091`？ | **不可行/不推荐**：跨源（3080 vs 3091）、网关 CORS 白名单 + Origin/Host 校验、网关会话 Cookie `SameSite=Strict` 且 host-only；手机根本到不了 `127.0.0.1:3091` | 仓库 `src/gateway.ts:675-688`（Origin 校验）、`:703-714`（SameSite=Strict）、`:771-780`（CORS 白名单）；`src/proxy.ts:180-205` |
 | DSH 能否区分 loopback 直连与经网关代理的手机请求？ | **不能靠请求本身**。网关代理把 `Host`/`Origin` 改写成 DSH loopback origin，并注入自己保管的 DSH Cookie；DSH 侧 socket 对端、Host、Origin 全都与“本机浏览器”一致。唯一可靠信号来自**网关主动注入的分类头** | 仓库 `src/proxy.ts:5-7,183-205,295`（改写 Host/Origin、剥离 Set-Cookie、注入 `x-forwarded-*`）；DSH 不读 `remoteAddress`（`ConnectionTrustRequest` 仅 headers：`$SRC/packages/client/connection/src/rpc.ts:98-101`）；`$SRC/docs/user/guide/public-deployments.zh.md:15-27` |
 | “只读给已配对设备、管理仅本机”可行吗？ | **可行，且必须双层门禁**：①网关代理对工作台管理路径按自身 `HostInfo.local` 直接 403；②DSH 桥路由再校验“网关分类头缺失（本机）才允许管理写”。客户端 `ctx.remote.$host.isLoopback` 只作 UI 提示 | 网关已有分类：`src/gateway.ts:656-673`；DSH 客户端 loopback 提示：安装态 `$INSTALL/dsh-client-ui-settings-general/lib/client.js:1403` 用法 |
 | 总体判断 | **能做（可行性高）**：整页工作台 + 导航入口 + 同源桥路由全部成立；MVP 主要工作量在“把 gateway 管理逻辑抽成可复用 service + 写客户端半侧 + 构建链”。代价中等、风险可控 | §6 配方、§7 阶段 |
@@ -319,14 +319,14 @@ ctx.slots.inject('settings.section', () => ctx.slots.register({
 
 ## 4. 宿主↔浏览器通信：三条路径对比与选择
 
-| 维度 | **(a) 宿主 `ctx.connection.fetch.register` 精确路由（推荐）** | **(b) typert / api-gateway Remote** | **(c) 客户端直连插件 `:3081`** |
+| 维度 | **(a) 宿主 `ctx.connection.fetch.register` 精确路由（推荐）** | **(b) typert / api-gateway Remote** | **(c) 客户端直连插件 `:3091`** |
 |---|---|---|---|
 | 注册位置 | `/api/<prefix>/...` 下的精确 Fetch 路由 | Host 侧 `@Remote` + `./typert` 生成物；Client 侧 generated `/remote` + `$mount` | 无 |
 | 第三方可用性 | ✅ 公开 HostConnectionHandle API | ⚠️ 机制公开，但生成器不在安装态、客户端 assembly 是应用显式选择（`$SRC/docs/api-gateway.zh.md:82,104-122`） | ❌ 不建议 |
 | 鉴权 | 自动继承 `/api` 栅栏 + 浏览器 Cookie/API 凭证；**精确路由只放行 owner Peer** | 同 `/api`；另有 `remoteAccess` 角色策略 | 需自己实现网关会话 Cookie，且跨源 |
 | CSRF | 无 token；靠 Host/Origin/Sec-Fetch-Site + SameSite Cookie | 同左 | 网关侧 `x-requested-with` + Origin 校验 |
 | CORS | 不需要（同源） | 不需要 | 需要，网关只对白名单 origin 开 CORS |
-| 手机场景 | ✅ 页面同源经网关代理可达 | ✅ 可达 | ❌ 手机到不了 127.0.0.1:3081 |
+| 手机场景 | ✅ 页面同源经网关代理可达 | ✅ 可达 | ❌ 手机到不了 127.0.0.1:3091 |
 | 实现成本 | 低（一个路由表 + `Response`） | 高（手写 strict codec/描述符、双向对齐、版本脆） | 中（但要重写一套鉴权且移动不可用） |
 | 适用 | 状态/命令/日志/二维码等 BFF 型接口 | 强类型、大对象、流式、跨插件共享 | 仅本机调试 |
 
@@ -410,13 +410,13 @@ export function registerWorkbenchBridge(ctx: Ctx, gateway: Gateway, version: str
 
 **结论**：首版不用 typert。除非未来需要“强类型 + 流式 + 多端共享”的正式 API，并接受维护成本。
 
-### 4.3 (c) 直连 3081：为什么不行
+### 4.3 (c) 直连 3091：为什么不行
 
-- 地址不同源：页面在 `http://127.0.0.1:3080`（或隧道域），网关在 `:3081`；浏览器按跨源处理。
+- 地址不同源：页面在 `http://127.0.0.1:3080`（或隧道域），网关在 `:3091`；浏览器按跨源处理。
 - 网关的 CORS 只对配置的 `security.corsOrigins` 白名单放行（`src/gateway.ts:771-780`），默认不含 DSH origin。
 - 网关所有请求都过 `#checkOrigin`（Origin 必须等于 Host，`src/gateway.ts:675-688`）；跨源 fetch 的 Origin 会被拒。
 - 网关会话 Cookie 是 host-only + `SameSite=Strict`（`src/gateway.ts:703-714`），跨源/跨站请求不会带上。
-- 手机端根本到不了 `127.0.0.1:3081`（网关只监听 loopback，`src/config.ts:350`）。
+- 手机端根本到不了 `127.0.0.1:3091`（网关只监听 loopback，`src/config.ts:350`）。
 - 即使本机放行，也等于把网关的管理鉴权绕过一遍，重复实现且扩大攻击面。
 
 ### 4.4 实时性
@@ -425,7 +425,7 @@ export function registerWorkbenchBridge(ctx: Ctx, gateway: Gateway, version: str
 - **完整版**：`ctx.connection.fetch` 只能一元响应；要推送可选：
   - 自定义 `ctx.webServer.register({kind:'prefix', path:'/gateway-mobile/stream'})` 做 SSE，但必须自己调 `ctx.connection.requestRejection(req)` 补鉴权（`$SRC/docs/subsystems/web-server.zh.md:80,110-149`）；
   - 或继续轮询 + 事件触发的短轮询（实现最省）。
-- 不建议复用网关 `/mobile/ws`：本地页面在 3080 上到不了 3081，且会引入第二套会话。
+- 不建议复用网关 `/mobile/ws`：本地页面在 3080 上到不了 3091，且会引入第二套会话。
 
 ---
 

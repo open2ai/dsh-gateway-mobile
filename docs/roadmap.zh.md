@@ -60,7 +60,7 @@
 
 ### P0-6 兼容性验证：DSH 升级与 HMR
 
-- **问题**：每次 DSH 升级只改 `engines.dsh` 再跑单测，真实集成检查 `scripts/integration-check.mjs` 靠手动执行；link 安装下的 HMR/重载没有冒烟测试。插件持有 3081 端口和 cloudflared 子进程，HMR 重载窗口里若旧 disposer 未跑完或子进程未退出，可能出现 `EADDRINUSE` 或孤儿 cloudflared（**需验证**：`ctx.effect` 的异步清理在重载时是否被等待）。
+- **问题**：每次 DSH 升级只改 `engines.dsh` 再跑单测，真实集成检查 `scripts/integration-check.mjs` 靠手动执行；link 安装下的 HMR/重载没有冒烟测试。插件持有 3091 端口和 cloudflared 子进程，HMR 重载窗口里若旧 disposer 未跑完或子进程未退出，可能出现 `EADDRINUSE` 或孤儿 cloudflared（**需验证**：`ctx.effect` 的异步清理在重载时是否被等待）。
 - **方案**：把集成检查拆成 `smoke`（现有流程）和 `capability`（可选服务缺失、微信未配置、`tunnel.enabled:false` 三种 profile）；新增 `scripts/hmr-check.mjs`：启动 dsh web 并 link 插件，touch `lib/index.js` 触发重载，断言端口仍可用、只有一个 cloudflared、旧 WS 已关闭；发布清单记录已测的 DSH 版本矩阵。
 - **改动面**：小（`scripts/`、`docs/development.md`、`package.json` scripts）。
 - **风险**：HMR 行为本身依赖 DSH 版本（**需验证**）；Windows 下子进程树要用 `taskkill /T`，脚本里已有先例。
@@ -105,7 +105,7 @@
 ### P1-5 安装与升级体验
 
 - **问题**：`engines.dsh` 精确匹配加 Node >= 24，升级 DSH 时插件可能直接不加载，但没有自检脚本；`package.json` 的 `files` 只带 `docs/DETAIL.*`，而 `scripts/pack.mjs` 打包整个 `docs/`，npm 版与 zip 版内容不一致；`docs/architecture-flow.md` 还写插件 0.1.1/DSH 0.2.1-rc.4，`docs/api.md` 示例是 0.1.0，`docs/deviations.md` 写 0.2.1-rc.2。
-- **方案**：新增 `scripts/doctor.mjs`（Node/DSH 版本、cloudflared 版本与哈希、3081 端口占用、dataDir 可写、profile 行存在、能否换取 DSH cookie），输出可复制的诊断；`package.json` 增加 `npm run doctor`；统一 `files` 与 pack 清单；新增 `scripts/check-docs.mjs` 校验文档版本引用与 `package.json`/`engines` 一致；补 `docs/upgrade.md`。
+- **方案**：新增 `scripts/doctor.mjs`（Node/DSH 版本、cloudflared 版本与哈希、3091 端口占用、dataDir 可写、profile 行存在、能否换取 DSH cookie），输出可复制的诊断；`package.json` 增加 `npm run doctor`；统一 `files` 与 pack 清单；新增 `scripts/check-docs.mjs` 校验文档版本引用与 `package.json`/`engines` 一致；补 `docs/upgrade.md`。
 - **改动面**：小（`scripts/`、`package.json`、`docs/`）。
 - **风险**：doctor 读取 DSH 安装版本的方式依赖包布局（**需验证**）；检查脚本过严会卡发布，默认 warning，`--strict` 才失败。
 
@@ -151,7 +151,7 @@
 以下结论依赖 DSH 或 iLink 的外部行为，落地前应先用最小脚本验证，不要直接写进实现假设：
 
 - ~~Cordis `ctx.get()` 对“未在 `inject` 中声明”的服务是否可见、何时可见。~~ **已确认**：不可见；`ctx.get()` 只能解析通过 `inject` 映射进调用方 fiber isolate 作用域的服务。
-- DSH HMR 重载时 `ctx.effect` 的异步 disposer 是否被等待，3081 端口是否立即释放。
+- DSH HMR 重载时 `ctx.effect` 的异步 disposer 是否被等待，3091 端口是否立即释放。
 - iLink `getupdates` 的 `ret=-14` 是否只表示登录失效，是否存在可恢复的 token 过期错误码。
 - cloudflared 是否提供稳定的本地 metrics/connector 健康端点，可用来替代 Named Tunnel 的固定 sleep。
 - DSH web profile 是否向插件暴露非 owner peer 身份（多用户方案的前提）。

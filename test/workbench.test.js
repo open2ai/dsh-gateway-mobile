@@ -9,7 +9,19 @@ import { PROXIED_HEADER, registerWorkbenchBridge } from '../lib/workbench/bridge
 function harness() {
   const registered = []
   const effects = []
-  const calls = { issue: 0, authSettings: 0, runtimeSettings: 0, tunnel: [], notifyEnabled: [], notifyPolicy: [] }
+  const calls = {
+    issue: 0,
+    authSettings: 0,
+    runtimeSettings: 0,
+    tunnel: [],
+    notifyEnabled: [],
+    notifyPolicy: [],
+    rename: [],
+    revoke: [],
+    remove: [],
+    purged: 0,
+    adminConsole: 0,
+  }
   const ctx = {
     effect(callback, label) {
       effects.push({ label, dispose: callback() })
@@ -24,7 +36,7 @@ function harness() {
     },
   }
   const status = {
-    gateway: { port: 3081, publicBase: 'https://example.trycloudflare.com', uptime: 3600 },
+    gateway: { port: 3091, publicBase: 'https://example.trycloudflare.com', uptime: 3600 },
     tunnel: {
       enabled: true,
       mode: 'quick',
@@ -40,7 +52,7 @@ function harness() {
     capabilities: { controller: true, workspaceRegistry: true, userQuestions: true, weixin: true },
   }
   const gateway = {
-    origin: 'http://127.0.0.1:3081',
+    origin: 'http://127.0.0.1:3091',
     statusPayload: () => status,
     pairingPayload: async () => ({
       code: 'AAAA-BBBB',
@@ -77,6 +89,24 @@ function harness() {
         revoked: false,
         expired: false,
       }),
+      rename(deviceId, deviceName) {
+        calls.rename.push([deviceId, deviceName])
+      },
+      revoke(deviceId) {
+        calls.revoke.push(deviceId)
+      },
+      remove(deviceId) {
+        calls.remove.push(deviceId)
+      },
+      purgeInactive() {
+        calls.purged += 1
+        return 2
+      },
+    },
+    adminConsoleEnabled: () => true,
+    updateAdminConsoleEnabled: async (value) => {
+      calls.adminConsole += 1
+      return value
     },
     logger: {
       recent: (limit) => [{ timestamp: '2026-11-10T01:00:00.000Z', level: 'info', message: `log-${limit}` }],
@@ -171,6 +201,10 @@ test('workbench bridge registers read routes plus the pairing regenerate action'
       'GET /api/gateway-mobile/read/audit',
       'GET /api/gateway-mobile/read/oauth',
       'POST /api/gateway-mobile/admin/oauth',
+      'POST /api/gateway-mobile/admin/devices/rename',
+      'POST /api/gateway-mobile/admin/devices/revoke',
+      'POST /api/gateway-mobile/admin/devices/delete',
+      'POST /api/gateway-mobile/admin/devices/purge',
     ],
   )
   assert.equal(effects.length, registered.length)
@@ -187,7 +221,7 @@ test('workbench bridge degrades gracefully when exact Fetch routes are absent', 
     },
     connection: {},
   }
-  const gateway = { origin: 'http://127.0.0.1:3081', statusPayload: () => ({}) }
+  const gateway = { origin: 'http://127.0.0.1:3091', statusPayload: () => ({}) }
   assert.equal(registerWorkbenchBridge(ctx, gateway, '0.2.0-next.0'), false)
 })
 
@@ -203,7 +237,7 @@ test('ping marks local callers and keeps the payload phone-safe', async () => {
   const body = await local.json()
   assert.equal(body.local, true)
   assert.equal(body.version, '0.2.0-next.0')
-  assert.equal(body.gateway.adminUrl, 'http://127.0.0.1:3081/mobile/admin')
+  assert.equal(body.gateway.adminUrl, 'http://127.0.0.1:3091/mobile/admin')
   assert.equal(body.tunnel.connected, true)
 
   const remote = await ping.fetch(
@@ -343,6 +377,33 @@ test('local weixin settings read and update the notifier', async () => {
   assert.equal(calls.notifyPolicy.length, 1)
   assert.equal(calls.notifyPolicy[0].debounceMs, 8000)
   assert.equal(calls.notifyPolicy[0].maxPerHour, 10)
+})
+
+test('local device actions and the admin-console flag reach the gateway', async () => {
+  const { ctx, gateway, registered, calls } = harness()
+  registerWorkbenchBridge(ctx, gateway, '0.2.0-next.0')
+
+  const deviceId = 'dev_aaaaaaaaaaaaaaaa'
+  const post = (path, body) =>
+    routeById(registered, path).fetch(
+      new Request(`http://127.0.0.1:3080${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    )
+
+  assert.equal((await post('/api/gateway-mobile/admin/devices/rename', { deviceId, deviceName: 'New' })).status, 200)
+  assert.deepEqual(calls.rename, [[deviceId, 'New']])
+  assert.equal((await post('/api/gateway-mobile/admin/devices/revoke', { deviceId })).status, 200)
+  assert.deepEqual(calls.revoke, [deviceId])
+  assert.equal((await post('/api/gateway-mobile/admin/devices/delete', { deviceId })).status, 200)
+  assert.deepEqual(calls.remove, [deviceId])
+  assert.equal((await post('/api/gateway-mobile/admin/devices/purge', { confirmText: 'DELETE REVOKED' })).status, 200)
+  assert.equal(calls.purged, 1)
+
+  assert.equal((await post('/api/gateway-mobile/admin/settings', { adminConsoleEnabled: false })).status, 200)
+  assert.equal(calls.adminConsole, 1)
 })
 
 test('local reads expose pairing, devices, logs and settings payloads', async () => {

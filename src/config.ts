@@ -113,7 +113,7 @@ const DEFAULTS = {
   dataDir: '',
   gateway: {
     host: '127.0.0.1',
-    port: 3081,
+    port: 3091,
     /** Optional external base URL used for cookies/QR/OAuth (Named Tunnel). */
     publicUrl: '',
   },

@@ -41,7 +41,10 @@ export interface OAuthSettings {
   oauthAllowedUsers?: string[]
 }
 
-export type StoredSettings = AuthSettings & RuntimeSettings & OAuthSettings
+export type StoredSettings = AuthSettings & RuntimeSettings & OAuthSettings & {
+  /** Compatibility switch for the standalone loopback admin page. Defaults to on. */
+  adminConsoleEnabled?: boolean
+}
 
 export interface SettingsConfig {
   auth: {
@@ -118,6 +121,9 @@ export class SettingsStore {
       }
       if (validOAuthAllowlist(parsed.oauthAllowedUsers)) {
         this.values.oauthAllowedUsers = parsed.oauthAllowedUsers.map((entry) => entry.trim())
+      }
+      if (typeof parsed.adminConsoleEnabled === 'boolean') {
+        this.values.adminConsoleEnabled = parsed.adminConsoleEnabled
       }
       return { ...this.values }
     } catch {
