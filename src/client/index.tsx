@@ -832,8 +832,48 @@ function toSettingsForm(settings: SettingsView): SettingsForm {
   }
 }
 
+interface WeixinNotifyView {
+  enabled: boolean
+  debounceMs: number
+  perSessionIntervalMs: number
+  globalIntervalMs: number
+  maxPerHour: number
+}
+
+interface WeixinView {
+  weixin: {
+    enabled?: boolean
+    connected?: boolean
+    state?: string
+    owner?: { masked?: string; boundAt?: number }
+    lastError?: string
+  } | null
+  notify: WeixinNotifyView | null
+}
+
+interface WeixinForm {
+  notifyEnabled: boolean
+  debounceSeconds: string
+  perSessionSeconds: string
+  globalSeconds: string
+  maxPerHour: string
+}
+
+function toWeixinForm(payload: WeixinView): WeixinForm {
+  const notify = payload.notify
+  return {
+    notifyEnabled: notify?.enabled ?? true,
+    debounceSeconds: notify ? String(Math.round(notify.debounceMs / 1000)) : '5',
+    perSessionSeconds: notify ? String(Math.round(notify.perSessionIntervalMs / 1000)) : '60',
+    globalSeconds: notify ? String(Math.round(notify.globalIntervalMs / 1000)) : '15',
+    maxPerHour: notify ? String(notify.maxPerHour) : '30',
+  }
+}
+
 function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const [form, setForm] = useState<SettingsForm | null>(null)
+  const [weixinForm, setWeixinForm] = useState<WeixinForm | null>(null)
+  const [weixinStatus, setWeixinStatus] = useState<WeixinView | null>(null)
   const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
   const [version, setVersion] = useState('')
   const [error, setError] = useState('')
@@ -842,10 +882,20 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      const payload = await apiGet<SettingsView>('/api/gateway-mobile/read/settings')
-      setForm(toSettingsForm(payload))
-      setLimits(payload.limits)
-      setVersion(payload.version ?? '')
+      const settingsPayload = await apiGet<SettingsView>('/api/gateway-mobile/read/settings')
+      setForm(toSettingsForm(settingsPayload))
+      setLimits(settingsPayload.limits)
+      setVersion(settingsPayload.version ?? '')
+      // The WeChat read route is newer than the base settings route; degrade to
+      // the channel switch only when an older host does not expose it yet.
+      try {
+        const weixinPayload = await apiGet<WeixinView>('/api/gateway-mobile/read/weixin')
+        setWeixinStatus(weixinPayload)
+        setWeixinForm(toWeixinForm(weixinPayload))
+      } catch {
+        setWeixinStatus(null)
+        setWeixinForm(null)
+      }
       setError('')
       setMessage('')
     } catch (cause) {
@@ -859,6 +909,11 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
 
   const update = <K extends keyof SettingsForm,>(key: K, value: SettingsForm[K]): void => {
     setForm((current) => (current === null ? current : { ...current, [key]: value }))
+    setMessage('')
+  }
+
+  const updateWeixin = <K extends keyof WeixinForm,>(key: K, value: WeixinForm[K]): void => {
+    setWeixinForm((current) => (current === null ? current : { ...current, [key]: value }))
     setMessage('')
   }
 
@@ -882,6 +937,23 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       setForm(toSettingsForm(payload))
       setLimits(payload.limits)
       setVersion(payload.version ?? version)
+
+      if (weixinForm) {
+        const policy = {
+          enabled: form.weixinEnabled,
+          notifyEnabled: weixinForm.notifyEnabled,
+          debounceMs: Math.round(Number(weixinForm.debounceSeconds) * 1000),
+          perSessionIntervalMs: Math.round(Number(weixinForm.perSessionSeconds) * 1000),
+          globalIntervalMs: Math.round(Number(weixinForm.globalSeconds) * 1000),
+          maxPerHour: Math.round(Number(weixinForm.maxPerHour)),
+        }
+        if (Object.values(policy).some((value) => typeof value === 'number' && !Number.isFinite(value))) {
+          throw new Error('请填写有效的通知参数（秒/条）')
+        }
+        const nextWeixin = await apiPost<WeixinView>('/api/gateway-mobile/admin/weixin', policy)
+        setWeixinStatus(nextWeixin)
+        setWeixinForm(toWeixinForm(nextWeixin))
+      }
       setMessage('设置已保存并生效')
     } catch (cause) {
       setError(messageOf(cause))
@@ -917,7 +989,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       </section>
 
       <section className="gwmb-card">
-        <h3>隧道与代理</h3>
+        <h3>隧道与配对</h3>
         <div className="gwmb-form">
           <label className="gwmb-form-row">
             <span>隧道开关</span>
@@ -942,12 +1014,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
               onChange={(event) => update('proxyTimeoutMs', event.target.value)}
             />
           </label>
-        </div>
-      </section>
-
-      <section className="gwmb-card">
-        <h3>认证与配对</h3>
-        <div className="gwmb-form">
           <label className="gwmb-form-row">
             <span>设备会话时长（天）</span>
             <input
@@ -989,8 +1055,72 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
               <option value="off">禁用</option>
             </select>
           </label>
+          {weixinForm ? (
+            <>
+              <label className="gwmb-form-row">
+                <span>完成通知</span>
+                <select
+                  className="gwmb-select"
+                  value={weixinForm.notifyEnabled ? 'on' : 'off'}
+                  onChange={(event) => updateWeixin('notifyEnabled', event.target.value === 'on')}
+                >
+                  <option value="on">启用</option>
+                  <option value="off">禁用</option>
+                </select>
+              </label>
+              <label className="gwmb-form-row">
+                <span>合并窗口（秒）</span>
+                <input
+                  className="gwmb-input"
+                  type="number"
+                  min="1"
+                  value={weixinForm.debounceSeconds}
+                  onChange={(event) => updateWeixin('debounceSeconds', event.target.value)}
+                />
+              </label>
+              <label className="gwmb-form-row">
+                <span>单会话冷却（秒）</span>
+                <input
+                  className="gwmb-input"
+                  type="number"
+                  min="0"
+                  value={weixinForm.perSessionSeconds}
+                  onChange={(event) => updateWeixin('perSessionSeconds', event.target.value)}
+                />
+              </label>
+              <label className="gwmb-form-row">
+                <span>全局间隔（秒）</span>
+                <input
+                  className="gwmb-input"
+                  type="number"
+                  min="0"
+                  value={weixinForm.globalSeconds}
+                  onChange={(event) => updateWeixin('globalSeconds', event.target.value)}
+                />
+              </label>
+              <label className="gwmb-form-row">
+                <span>每小时上限（条）</span>
+                <input
+                  className="gwmb-input"
+                  type="number"
+                  min="1"
+                  value={weixinForm.maxPerHour}
+                  onChange={(event) => updateWeixin('maxPerHour', event.target.value)}
+                />
+              </label>
+            </>
+          ) : null}
         </div>
-        <div className="gwmb-meta gwmb-muted">微信扫码登录、审批与通知策略在「独立管理台 → 微信」中维护。</div>
+        {weixinStatus?.weixin ? (
+          <div className="gwmb-meta">
+            状态 {weixinStatus.weixin.state ?? (weixinStatus.weixin.connected ? 'connected' : '未连接')}
+            {weixinStatus.weixin.owner?.masked ? ` · 绑定账号 ${weixinStatus.weixin.owner.masked}` : ''}
+            {weixinStatus.weixin.lastError ? ` · ${weixinStatus.weixin.lastError}` : ''}
+          </div>
+        ) : null}
+        <div className="gwmb-meta gwmb-muted">
+          扫码登录、审批与通知历史在「独立管理台 → 微信」中维护；通知策略保存后立即生效。
+        </div>
       </section>
 
       <section className="gwmb-card">

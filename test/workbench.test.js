@@ -9,7 +9,7 @@ import { PROXIED_HEADER, registerWorkbenchBridge } from '../lib/workbench/bridge
 function harness() {
   const registered = []
   const effects = []
-  const calls = { issue: 0, authSettings: 0, runtimeSettings: 0, tunnel: [] }
+  const calls = { issue: 0, authSettings: 0, runtimeSettings: 0, tunnel: [], notifyEnabled: [], notifyPolicy: [] }
   const ctx = {
     effect(callback, label) {
       effects.push({ label, dispose: callback() })
@@ -102,6 +102,39 @@ function harness() {
       restart: async () => calls.tunnel.push('restart'),
       status: () => status.tunnel,
     },
+    weixin: {
+      status: () => ({
+        enabled: true,
+        connected: true,
+        state: 'connected',
+        allowOtherUsers: false,
+        received: 0,
+        cursor: '',
+        lastPollAt: 0,
+        lastOkAt: 0,
+        failures: 0,
+        contextAgeMs: null,
+      }),
+    },
+    weixinNotifier: {
+      status: () => ({
+        enabled: true,
+        debounceMs: 5000,
+        perSessionIntervalMs: 60_000,
+        globalIntervalMs: 15_000,
+        maxPerHour: 30,
+        recent: [],
+        permanentFailureCount: 0,
+      }),
+      setEnabled: async (enabled) => {
+        calls.notifyEnabled.push(enabled)
+        return { enabled }
+      },
+      setPolicy: async (policy) => {
+        calls.notifyPolicy.push(policy)
+        return { enabled: true, ...policy }
+      },
+    },
   }
   return { ctx, gateway, registered, effects, calls, status }
 }
@@ -127,6 +160,8 @@ test('workbench bridge registers read routes plus the pairing regenerate action'
       'POST /api/gateway-mobile/admin/pairing/regenerate',
       'POST /api/gateway-mobile/admin/settings',
       'POST /api/gateway-mobile/admin/tunnel',
+      'GET /api/gateway-mobile/read/weixin',
+      'POST /api/gateway-mobile/admin/weixin',
     ],
   )
   assert.equal(effects.length, registered.length)
@@ -210,7 +245,7 @@ test('local-only reads and regeneration reject tunnel-proxied callers', async ()
   assert.equal(allowed.status, 200)
   assert.equal(calls.issue, 1)
 
-  for (const path of ['/api/gateway-mobile/admin/settings', '/api/gateway-mobile/admin/tunnel']) {
+  for (const path of ['/api/gateway-mobile/admin/settings', '/api/gateway-mobile/admin/tunnel', '/api/gateway-mobile/admin/weixin']) {
     const route = routeById(registered, path)
     const blocked = await route.fetch(
       new Request(`http://127.0.0.1:3080${path}`, {
@@ -266,6 +301,39 @@ test('local settings and tunnel actions reach the gateway', async () => {
     }),
   )
   assert.equal(unknown.status, 400)
+})
+
+test('local weixin settings read and update the notifier', async () => {
+  const { ctx, gateway, registered, calls } = harness()
+  registerWorkbenchBridge(ctx, gateway, '0.2.0-next.0')
+
+  const read = await routeById(registered, '/api/gateway-mobile/read/weixin').fetch(
+    new Request('http://127.0.0.1:3080/api/gateway-mobile/read/weixin'),
+  )
+  assert.equal(read.status, 200)
+  const readBody = await read.json()
+  assert.equal(readBody.weixin.state, 'connected')
+  assert.equal(readBody.notify.debounceMs, 5000)
+
+  const write = await routeById(registered, '/api/gateway-mobile/admin/weixin').fetch(
+    new Request('http://127.0.0.1:3080/api/gateway-mobile/admin/weixin', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        enabled: false,
+        notifyEnabled: false,
+        debounceMs: 8000,
+        perSessionIntervalMs: 120_000,
+        globalIntervalMs: 20_000,
+        maxPerHour: 10,
+      }),
+    }),
+  )
+  assert.equal(write.status, 200)
+  assert.deepEqual(calls.notifyEnabled, [false])
+  assert.equal(calls.notifyPolicy.length, 1)
+  assert.equal(calls.notifyPolicy[0].debounceMs, 8000)
+  assert.equal(calls.notifyPolicy[0].maxPerHour, 10)
 })
 
 test('local reads expose pairing, devices, logs and settings payloads', async () => {

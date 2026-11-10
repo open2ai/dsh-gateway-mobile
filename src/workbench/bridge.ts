@@ -131,6 +131,14 @@ function settingsPayload(gateway: Gateway): Record<string, unknown> {
   }
 }
 
+/** WeChat channel + completion-notification state (local-only). */
+function weixinPayload(gateway: Gateway): Record<string, unknown> {
+  return {
+    weixin: gateway.weixin?.status() ?? null,
+    notify: gateway.weixinNotifier?.status() ?? null,
+  }
+}
+
 function wrap(handler: (request: Request) => Promise<Response>): (request: Request) => Promise<Response> {
   return async (request: Request) => {
     try {
@@ -265,6 +273,62 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
         else if (action === 'restart') await gateway.tunnel.restart()
         else return errorResponse('未知的隧道操作', 400, 1002)
         return json(gateway.tunnel.status())
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/read/weixin',
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: wrap((request) => {
+        const denied = localOnly(request)
+        if (denied) return Promise.resolve(denied)
+        return Promise.resolve(json(weixinPayload(gateway)))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/weixin',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as Record<string, unknown>
+        let touched = false
+        if (typeof body.enabled === 'boolean') {
+          await gateway.updateRuntimeSettings({ weixinEnabled: body.enabled })
+          touched = true
+        }
+        const notifier = gateway.weixinNotifier
+        if (typeof body.notifyEnabled === 'boolean') {
+          if (!notifier) return errorResponse('微信通知不可用', 409, 1008)
+          await notifier.setEnabled(body.notifyEnabled)
+          touched = true
+        }
+        const policy: {
+          debounceMs?: number
+          perSessionIntervalMs?: number
+          globalIntervalMs?: number
+          maxPerHour?: number
+        } = {}
+        for (const field of ['debounceMs', 'perSessionIntervalMs', 'globalIntervalMs', 'maxPerHour'] as const) {
+          const value = body[field]
+          if (value === undefined) continue
+          if (typeof value !== 'number' || !Number.isInteger(value)) {
+            return errorResponse(`通知参数 ${field} 无效`, 400, 1002)
+          }
+          policy[field] = value
+        }
+        if (Object.keys(policy).length > 0) {
+          if (!notifier) return errorResponse('微信通知不可用', 409, 1008)
+          try {
+            await notifier.setPolicy(policy)
+          } catch {
+            return errorResponse('通知参数超出允许范围', 400, 1002)
+          }
+          touched = true
+        }
+        if (!touched) return errorResponse('没有可更新的微信设置', 400, 1002)
+        return json(weixinPayload(gateway))
       }),
     },
   ]

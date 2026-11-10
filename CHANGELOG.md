@@ -23,6 +23,9 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
   local-only `POST /api/gateway-mobile/admin/settings`; tunnel actions use `POST .../admin/tunnel`.
   Phones see the overview only. The page uses DSH's semantic theme tokens (`--dsw-alias-label-*`,
   `--dsw-alias-bg-layer-*`, `--dsw-alias-border-*`, state colors), so it follows DSH light/dark appearance.
+- Settings are grouped into cards: 插件版本, 隧道与配对 (tunnel/proxy switch, session lifetime, pairing TTL),
+  微信 (channel + completion-notification policy: debounce, per-session cooldown, global interval, hourly cap),
+  and 日志. WeChat settings use local-only `read/weixin` and `POST admin/weixin`.
 - Layout follows the DSH main-panel page contract: header and tabs stay frozen, only the tab content
   scrolls, and tables/logs keep one-line cells where they must not wrap.
 - Version bumped to `0.2.0-next.0` for the npm `next` dist-tag; `engines.dsh` stays pinned to `0.2.2-rc.1`.
