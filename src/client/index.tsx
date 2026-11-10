@@ -489,18 +489,21 @@ function OverviewTab(props: {
           </div>
           <div className="gwmb-meta">{ping?.local ? '本机可管理全部设备' : '手机端为只读视图'}</div>
         </InfoCard>
-
-        <InfoCard title="能力">
-          <div className="gwmb-meta">
-            DSH 控制器 {ping?.capabilities.controller ? '可用' : '不可用'} · 工作区{' '}
-            {ping?.capabilities.workspaceRegistry ? '可用' : '不可用'}
-          </div>
-          <div className="gwmb-meta">
-            用户提问 {ping?.capabilities.userQuestions ? '可用' : '不可用'} · 微信{' '}
-            {ping?.capabilities.weixin ? '已启用' : '未启用'}
-          </div>
-        </InfoCard>
       </div>
+
+      <section className="gwmb-card">
+        <h3>能力</h3>
+        <dl className="gwmb-kv">
+          <dt>DSH 控制器</dt>
+          <dd>{ping?.capabilities.controller ? '可用' : '不可用'}</dd>
+          <dt>工作区</dt>
+          <dd>{ping?.capabilities.workspaceRegistry ? '可用' : '不可用'}</dd>
+          <dt>用户提问</dt>
+          <dd>{ping?.capabilities.userQuestions ? '可用' : '不可用'}</dd>
+          <dt>微信</dt>
+          <dd>{ping?.capabilities.weixin ? '已启用' : '未启用'}</dd>
+        </dl>
+      </section>
 
       {props.bridgeReady && ping?.local ? (
         <section className="gwmb-card">
