@@ -1593,11 +1593,11 @@ function LogsTab(): ReactElement {
             aria-label="审计导出范围"
             onChange={(event) => setExportRange(event.target.value as '24h' | '7d' | 'all')}
           >
-            <option value="24h">最近 24 小时（不限条数）</option>
-            <option value="7d">最近 7 天（不限条数）</option>
-            <option value="30d">最近 30 天（不限条数）</option>
-            <option value="90d">最近 90 天（不限条数）</option>
-            <option value="custom">自定义时间段（不限条数）</option>
+            <option value="24h">最近 24 小时</option>
+            <option value="7d">最近 7 天</option>
+            <option value="30d">最近 30 天</option>
+            <option value="90d">最近 90 天</option>
+            <option value="custom">自定义时间段</option>
             <option value="all">全部（最多 500 条）</option>
           </select>
           <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={exporting} onClick={() => void exportAudit()}>
