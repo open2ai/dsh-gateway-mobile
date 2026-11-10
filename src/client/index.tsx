@@ -189,9 +189,21 @@ const STYLE = `
 .gwmb-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
 .gwmb-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--dsw-alias-label-primary); }
 .gwmb-table th, .gwmb-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); vertical-align: top; }
-.gwmb-table th { font-size: 12px; color: var(--dsw-alias-label-tertiary); font-weight: 500; }
+.gwmb-table th { font-size: 12px; color: var(--dsw-alias-label-tertiary); font-weight: 500; white-space: nowrap; }
+.gwmb-table-wrap { width: 100%; overflow-x: auto; }
+.gwmb-devices-table { table-layout: fixed; min-width: 780px; }
+.gwmb-devices-table td { vertical-align: middle; }
+.gwmb-devices-table th:nth-child(1), .gwmb-devices-table td:nth-child(1) { width: 36%; }
+.gwmb-devices-table th:nth-child(2), .gwmb-devices-table td:nth-child(2) { width: 104px; }
+.gwmb-devices-table th:nth-child(3), .gwmb-devices-table td:nth-child(3) { width: 150px; }
+.gwmb-devices-table th:nth-child(4), .gwmb-devices-table td:nth-child(4) { width: 150px; }
+.gwmb-devices-table th:nth-child(5), .gwmb-devices-table td:nth-child(5) { width: 120px; }
+.gwmb-nowrap { white-space: nowrap; }
+.gwmb-device-name, .gwmb-device-ua { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gwmb-device-name { color: var(--dsw-alias-label-primary); }
+.gwmb-device-ua { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 .gwmb-log { display: grid; grid-template-columns: 148px 60px 1fr; gap: 10px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
-.gwmb-log-time { color: var(--dsw-alias-label-caption); }
+.gwmb-log-time { color: var(--dsw-alias-label-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gwmb-log-msg { word-break: break-word; color: var(--dsw-alias-label-secondary); }
 .gwmb-select { font-size: 13px; padding: 5px 8px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .gwmb-kv { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 16px; font-size: 13px; }
@@ -257,6 +269,14 @@ function formatTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
+}
+
+/** Compact `YYYY-MM-DD HH:mm` used by table cells that must stay on one line. */
+function formatShortTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (part: number): string => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 function statusTone(ok: boolean): string {
@@ -505,42 +525,52 @@ function DevicesTab(): ReactElement {
       <div className="gwmb-meta" style={{ marginBottom: 8 }}>
         只读视图；重命名、撤销与清理请在独立管理台完成。
       </div>
-      <table className="gwmb-table">
-        <thead>
-          <tr>
-            <th>设备</th>
-            <th>状态</th>
-            <th>最近活动</th>
-            <th>创建时间</th>
-            <th>IP</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(devices ?? []).map((device) => {
-            const tone = device.revoked || device.expired ? 'gwmb-bad' : device.isOnline ? 'gwmb-ok' : 'gwmb-warn'
-            const state = device.revoked ? '已撤销' : device.expired ? '已过期' : device.isOnline ? '在线' : '离线'
-            return (
-              <tr key={device.deviceId}>
-                <td>
-                  <div>{device.displayName || device.deviceName}</div>
-                  <div className="gwmb-meta">{device.userAgent}</div>
-                </td>
-                <td className={tone}>{state}{device.isCurrent ? ' · 本机' : ''}</td>
-                <td>{formatTime(device.lastActiveAt)}</td>
-                <td>{formatTime(device.createdAt)}</td>
-                <td className="gwmb-code">{device.lastIp || '—'}</td>
-              </tr>
-            )
-          })}
-          {devices !== null && devices.length === 0 ? (
+      <div className="gwmb-table-wrap">
+        <table className="gwmb-table gwmb-devices-table">
+          <thead>
             <tr>
-              <td colSpan={5} className="gwmb-muted">
-                还没有已配对设备。
-              </td>
+              <th>设备</th>
+              <th>状态</th>
+              <th>最近活动</th>
+              <th>创建时间</th>
+              <th>IP</th>
             </tr>
-          ) : null}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {(devices ?? []).map((device) => {
+              const tone = device.revoked || device.expired ? 'gwmb-bad' : device.isOnline ? 'gwmb-ok' : 'gwmb-warn'
+              const state = device.revoked ? '已撤销' : device.expired ? '已过期' : device.isOnline ? '在线' : '离线'
+              const name = device.displayName || device.deviceName
+              return (
+                <tr key={device.deviceId}>
+                  <td className="gwmb-device-cell">
+                    <div className="gwmb-device-name" title={name}>
+                      {name}
+                    </div>
+                    <div className="gwmb-device-ua" title={device.userAgent}>
+                      {device.userAgent}
+                    </div>
+                  </td>
+                  <td className={`gwmb-nowrap ${tone}`}>
+                    {state}
+                    {device.isCurrent ? ' · 本机' : ''}
+                  </td>
+                  <td className="gwmb-nowrap">{formatShortTime(device.lastActiveAt)}</td>
+                  <td className="gwmb-nowrap">{formatShortTime(device.createdAt)}</td>
+                  <td className="gwmb-code gwmb-nowrap">{device.lastIp || '—'}</td>
+                </tr>
+              )
+            })}
+            {devices !== null && devices.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="gwmb-muted">
+                  还没有已配对设备。
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
       {devices === null ? <div className="gwmb-meta">正在读取设备…</div> : null}
     </section>
   )
