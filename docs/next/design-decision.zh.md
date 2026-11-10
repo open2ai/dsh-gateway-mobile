@@ -11,6 +11,8 @@
 >
 > **Phase 1 已落地（2026-11-10）**：`read/pairing`、`read/devices`、`read/logs`、`read/settings`（仅本机）与 `POST admin/pairing/regenerate`；网关注入 `x-dsh-gateway-proxied` 并在代理层对本地专属前缀 403；工作台 5 个页签（概览/配对/设备/日志/设置），手机仅概览；配色改用 DSH `--dsw-alias-*` 主题 token，跟随明暗主题。
 >
+> **Phase 2 部分已落地（2026-11-10）**：设置页签可编辑（会话时长、配对 TTL、隧道/微信开关、日志级别、代理超时），`POST admin/settings` 仅本机；概览提供隧道启动/停止/重连，`POST admin/tunnel` 仅本机；布局改为标题/页签冻结、内容区独立滚动。
+>
 > **启用步骤**：`npm run build` 后重启一次 `dsh web`（DSH 缓存客户端 bundle 清单直到重启）。重启会同时重连 Quick Tunnel（公网域名可能变化，手机需重新配对）。
 
 ---

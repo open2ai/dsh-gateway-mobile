@@ -9,7 +9,7 @@ import { PROXIED_HEADER, registerWorkbenchBridge } from '../lib/workbench/bridge
 function harness() {
   const registered = []
   const effects = []
-  const calls = { issue: 0 }
+  const calls = { issue: 0, authSettings: 0, runtimeSettings: 0, tunnel: [] }
   const ctx = {
     effect(callback, label) {
       effects.push({ label, dispose: callback() })
@@ -88,6 +88,20 @@ function harness() {
       logLevel: 'info',
       proxyRequestTimeoutMs: 30_000,
     }),
+    updateAuthSettings: async (patch) => {
+      calls.authSettings += 1
+      return { ...patch, limits: {} }
+    },
+    updateRuntimeSettings: async (patch) => {
+      calls.runtimeSettings += 1
+      return patch
+    },
+    tunnel: {
+      start: async () => calls.tunnel.push('start'),
+      stop: async () => calls.tunnel.push('stop'),
+      restart: async () => calls.tunnel.push('restart'),
+      status: () => status.tunnel,
+    },
   }
   return { ctx, gateway, registered, effects, calls, status }
 }
@@ -111,6 +125,8 @@ test('workbench bridge registers read routes plus the pairing regenerate action'
       'GET /api/gateway-mobile/read/logs',
       'GET /api/gateway-mobile/read/settings',
       'POST /api/gateway-mobile/admin/pairing/regenerate',
+      'POST /api/gateway-mobile/admin/settings',
+      'POST /api/gateway-mobile/admin/tunnel',
     ],
   )
   assert.equal(effects.length, registered.length)
@@ -193,6 +209,63 @@ test('local-only reads and regeneration reject tunnel-proxied callers', async ()
   )
   assert.equal(allowed.status, 200)
   assert.equal(calls.issue, 1)
+
+  for (const path of ['/api/gateway-mobile/admin/settings', '/api/gateway-mobile/admin/tunnel']) {
+    const route = routeById(registered, path)
+    const blocked = await route.fetch(
+      new Request(`http://127.0.0.1:3080${path}`, {
+        method: 'POST',
+        headers: { [PROXIED_HEADER]: '1' },
+      }),
+    )
+    assert.equal(blocked.status, 403, `${path} must reject proxied callers`)
+  }
+})
+
+test('local settings and tunnel actions reach the gateway', async () => {
+  const { ctx, gateway, registered, calls } = harness()
+  registerWorkbenchBridge(ctx, gateway, '0.2.0-next.0')
+
+  const settings = routeById(registered, '/api/gateway-mobile/admin/settings')
+  const saved = await settings.fetch(
+    new Request('http://127.0.0.1:3080/api/gateway-mobile/admin/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionMaxAge: 172_800, logLevel: 'debug', tunnelEnabled: false }),
+    }),
+  )
+  assert.equal(saved.status, 200)
+  assert.equal(calls.authSettings, 1)
+  assert.equal(calls.runtimeSettings, 1)
+
+  const empty = await settings.fetch(
+    new Request('http://127.0.0.1:3080/api/gateway-mobile/admin/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    }),
+  )
+  assert.equal(empty.status, 400)
+
+  const tunnel = routeById(registered, '/api/gateway-mobile/admin/tunnel')
+  const restarted = await tunnel.fetch(
+    new Request('http://127.0.0.1:3080/api/gateway-mobile/admin/tunnel', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'restart' }),
+    }),
+  )
+  assert.equal(restarted.status, 200)
+  assert.deepEqual(calls.tunnel, ['restart'])
+
+  const unknown = await tunnel.fetch(
+    new Request('http://127.0.0.1:3080/api/gateway-mobile/admin/tunnel', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'explode' }),
+    }),
+  )
+  assert.equal(unknown.status, 400)
 })
 
 test('local reads expose pairing, devices, logs and settings payloads', async () => {

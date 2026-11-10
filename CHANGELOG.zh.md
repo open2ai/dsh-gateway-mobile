@@ -15,9 +15,12 @@
 - 网关给所有转发请求注入 `x-dsh-gateway-proxied`（并剥离调用方伪造的同名头），在代理前就拒绝工作台
   本地专属前缀，因此手机即使打开同一 UI 也拿不到配对码、设备、日志、设置或管理操作；DSH 桥再按同一
   信号 fail-closed 复核一层。
-- 工作台 UI（Phase 1）：概览、配对（二维码 + 8 位码 + 重新生成 + 复制链接）、设备、日志、设置（只读）
-  五个页签；手机只看到概览。页面配色改用 DSH 语义主题 token（`--dsw-alias-label-*`、
-  `--dsw-alias-bg-layer-*`、`--dsw-alias-border-*`、状态色），跟随 DSH 明暗主题，不再假设浅色背景。
+- 工作台 UI（Phase 1/2）：概览、配对（二维码 + 8 位码 + 重新生成 + 复制链接）、设备、日志、可编辑设置
+  五个页签；概览还提供本机隧道操作（启动/停止/重连）。设置（会话时长、配对 TTL、隧道/微信开关、日志级别、
+  代理超时）通过仅本机的 `POST /api/gateway-mobile/admin/settings` 保存；隧道操作走
+  `POST .../admin/tunnel`。手机只看到概览。页面配色全部使用 DSH 语义主题 token
+  （`--dsw-alias-label-*`、`--dsw-alias-bg-layer-*`、`--dsw-alias-border-*`、状态色），跟随 DSH 明暗主题。
+- 布局遵循 DSH 主面板页面契约：标题与页签固定，只有页签内容滚动；表格与日志按需保持单行。
 - 版本号升级到 `0.2.0-next.0`，用于 npm `next` dist-tag；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`。
 - 执行 `npm run build` 后需要重启一次 `dsh web`（DSH 会缓存客户端 bundle 清单直到重启）。
 

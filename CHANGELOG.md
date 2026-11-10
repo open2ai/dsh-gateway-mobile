@@ -17,10 +17,14 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
   copies) and refuses the workbench local-only prefixes before proxying, so a paired phone cannot reach
   pairing codes, device lists, logs, settings or management actions even though it opens the same UI.
   The workbench bridge enforces the same split again (fail-closed) as defense in depth.
-- Workbench UI (Phase 1): tabs for overview, pairing (QR + 8-character code + regenerate + copy link),
-  devices, logs and read-only settings; phones see the overview only. The page uses DSH's semantic theme
-  tokens (`--dsw-alias-label-*`, `--dsw-alias-bg-layer-*`, `--dsw-alias-border-*`, state colors), so it
-  follows DSH light/dark appearance instead of assuming a light background.
+- Workbench UI (Phase 1/2): tabs for overview, pairing (QR + 8-character code + regenerate + copy link),
+  devices, logs and editable settings. The overview also offers local tunnel controls (start/stop/restart).
+  Settings (session lifetime, pairing TTL, tunnel/WeChat switches, log level, proxy timeout) save through
+  local-only `POST /api/gateway-mobile/admin/settings`; tunnel actions use `POST .../admin/tunnel`.
+  Phones see the overview only. The page uses DSH's semantic theme tokens (`--dsw-alias-label-*`,
+  `--dsw-alias-bg-layer-*`, `--dsw-alias-border-*`, state colors), so it follows DSH light/dark appearance.
+- Layout follows the DSH main-panel page contract: header and tabs stay frozen, only the tab content
+  scrolls, and tables/logs keep one-line cells where they must not wrap.
 - Version bumped to `0.2.0-next.0` for the npm `next` dist-tag; `engines.dsh` stays pinned to `0.2.2-rc.1`.
 - Activation needs one `dsh web` restart after `npm run build` (DSH caches client bundle manifests until restart).
 

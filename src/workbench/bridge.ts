@@ -28,6 +28,7 @@
 import type { Gateway } from '../gateway.js'
 import type { PublicDevice } from '../devices.js'
 import type { LogEntry } from '../logger.js'
+import { GatewayError } from '../errors.js'
 
 /** One exact Fetch route below the DSH `/api` channel (DSH connection contract). */
 export interface WorkbenchFetchRoute {
@@ -134,6 +135,9 @@ function wrap(handler: (request: Request) => Promise<Response>): (request: Reque
     try {
       return await handler(request)
     } catch (error) {
+      if (error instanceof GatewayError) {
+        return json({ code: error.code, message: error.message, data: error.data }, error.httpStatus)
+      }
       const message = error instanceof Error ? error.message : String(error)
       return errorResponse(message, 500, 5000)
     }
@@ -216,6 +220,50 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
         if (denied) return denied
         gateway.pairing.issue()
         return json(await gateway.pairingPayload())
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/settings',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as Record<string, unknown>
+        const authPatch: { sessionMaxAge?: unknown; pairingTokenExpiry?: unknown } = {}
+        if ('sessionMaxAge' in body) authPatch.sessionMaxAge = body.sessionMaxAge
+        if ('pairingTokenExpiry' in body) authPatch.pairingTokenExpiry = body.pairingTokenExpiry
+        const runtimePatch: {
+          tunnelEnabled?: unknown
+          weixinEnabled?: unknown
+          logLevel?: unknown
+          proxyRequestTimeoutMs?: unknown
+        } = {}
+        for (const field of ['tunnelEnabled', 'weixinEnabled', 'logLevel', 'proxyRequestTimeoutMs'] as const) {
+          if (field in body) runtimePatch[field] = body[field]
+        }
+        const hasAuth = Object.keys(authPatch).length > 0
+        const hasRuntime = Object.keys(runtimePatch).length > 0
+        if (!hasAuth && !hasRuntime) return errorResponse('没有可更新的设置', 400, 1002)
+        if (hasAuth) await gateway.updateAuthSettings(authPatch)
+        if (hasRuntime) await gateway.updateRuntimeSettings(runtimePatch)
+        return json(settingsPayload(gateway))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/tunnel',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as { action?: unknown }
+        const action = typeof body.action === 'string' ? body.action : ''
+        if (action === 'stop') await gateway.tunnel.stop()
+        else if (action === 'start') await gateway.tunnel.start()
+        else if (action === 'restart') await gateway.tunnel.restart()
+        else return errorResponse('未知的隧道操作', 400, 1002)
+        return json(gateway.tunnel.status())
       }),
     },
   ]

@@ -152,7 +152,7 @@ interface SettingsView {
 const STYLE = `
 .gwmb-page { box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 18px; padding: 28px clamp(16px, 4vw, 48px) 0; max-width: 1080px; margin: 0 auto; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); }
 .gwmb-head, .gwmb-tabs { flex: 0 0 auto; }
-.gwmb-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-bottom: 40px; }
+.gwmb-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; overflow-x: hidden; padding-bottom: 56px; }
 .gwmb-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 20px; }
 .gwmb-title { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: 0.01em; color: var(--dsw-alias-label-primary); }
 .gwmb-sub { margin: 2px 0 0; font-size: 13px; color: var(--dsw-alias-label-secondary); }
@@ -211,6 +211,11 @@ const STYLE = `
 .gwmb-kv { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 16px; font-size: 13px; }
 .gwmb-kv dt { color: var(--dsw-alias-label-tertiary); }
 .gwmb-kv dd { margin: 0; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+.gwmb-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 18px; }
+.gwmb-form-row { display: flex; flex-direction: column; gap: 5px; font-size: 13px; min-width: 0; }
+.gwmb-form-row > span:first-child { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+.gwmb-input { box-sizing: border-box; width: 100%; font-size: 13px; font-family: inherit; padding: 6px 9px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
+.gwmb-input:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
 `
 
 // Insert the stylesheet while the module factory is materializing: the client
@@ -239,13 +244,26 @@ async function apiGet<T>(path: string): Promise<T> {
   return (await response.json()) as T
 }
 
-async function apiPost<T>(path: string): Promise<T> {
-  const response = await fetch(path, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { accept: 'application/json' },
-  })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { accept: 'application/json' }
+  const init: RequestInit = { method: 'POST', credentials: 'same-origin' }
+  if (body !== undefined) {
+    headers['content-type'] = 'application/json'
+    init.body = JSON.stringify(body)
+  }
+  init.headers = headers
+  const response = await fetch(path, init)
+  if (!response.ok) {
+    // Surface the gateway error envelope's message when present.
+    let detail = `HTTP ${response.status}`
+    try {
+      const payload = (await response.json()) as { message?: unknown }
+      if (typeof payload.message === 'string' && payload.message) detail = payload.message
+    } catch {
+      // keep the status text
+    }
+    throw new Error(detail)
+  }
   return (await response.json()) as T
 }
 
@@ -303,9 +321,31 @@ function ErrorCard(props: { title: string; children: ReactNode }): ReactElement 
   )
 }
 
-function OverviewTab(props: { ping: PingView | null; refreshedAt: string; bridgeReady: boolean }): ReactElement {
+function OverviewTab(props: {
+  ping: PingView | null
+  refreshedAt: string
+  bridgeReady: boolean
+  local: boolean
+  onRefresh: () => void
+}): ReactElement {
   const { ping } = props
   const online = ping?.tunnel.connected === true
+  const [tunnelBusy, setTunnelBusy] = useState('')
+  const [tunnelError, setTunnelError] = useState('')
+
+  const controlTunnel = async (action: 'start' | 'stop' | 'restart'): Promise<void> => {
+    setTunnelBusy(action)
+    setTunnelError('')
+    try {
+      await apiPost('/api/gateway-mobile/admin/tunnel', { action })
+      props.onRefresh()
+    } catch (cause) {
+      setTunnelError(messageOf(cause))
+    } finally {
+      setTunnelBusy('')
+    }
+  }
+
   return (
     <>
       {!props.bridgeReady && ping ? (
@@ -333,6 +373,35 @@ function OverviewTab(props: { ping: PingView | null; refreshedAt: string; bridge
           </div>
           <div className="gwmb-meta">{ping ? `${ping.tunnel.mode} · ${ping.tunnel.protocol}` : '—'}</div>
           {ping?.tunnel.url ? <div className="gwmb-meta gwmb-code">{ping.tunnel.url}</div> : null}
+          {props.local ? (
+            <div className="gwmb-actions">
+              <button
+                className="gwmb-btn"
+                type="button"
+                disabled={tunnelBusy !== '' || !ping}
+                onClick={() => void controlTunnel('start')}
+              >
+                {tunnelBusy === 'start' ? '启动中…' : '启动'}
+              </button>
+              <button
+                className="gwmb-btn"
+                type="button"
+                disabled={tunnelBusy !== '' || !ping}
+                onClick={() => void controlTunnel('stop')}
+              >
+                {tunnelBusy === 'stop' ? '停止中…' : '停止'}
+              </button>
+              <button
+                className="gwmb-btn"
+                type="button"
+                disabled={tunnelBusy !== '' || !ping}
+                onClick={() => void controlTunnel('restart')}
+              >
+                {tunnelBusy === 'restart' ? '重连中…' : '重连'}
+              </button>
+            </div>
+          ) : null}
+          {tunnelError ? <div className="gwmb-meta gwmb-bad">{tunnelError}</div> : null}
         </StatusCard>
 
         <StatusCard title="设备">
@@ -640,60 +709,197 @@ function LogsTab(): ReactElement {
   )
 }
 
-function SettingsTab(): ReactElement {
-  const [settings, setSettings] = useState<SettingsView | null>(null)
-  const [error, setError] = useState('')
+interface SettingsForm {
+  sessionDays: string
+  pairingMinutes: string
+  tunnelEnabled: boolean
+  weixinEnabled: boolean
+  logLevel: string
+  proxyTimeoutMs: string
+}
 
-  useEffect(() => {
-    let alive = true
-    void apiGet<SettingsView>('/api/gateway-mobile/read/settings')
-      .then((payload) => {
-        if (alive) {
-          setSettings(payload)
-          setError('')
-        }
-      })
-      .catch((cause: unknown) => {
-        if (alive) setError(messageOf(cause))
-      })
-    return () => {
-      alive = false
+function toSettingsForm(settings: SettingsView): SettingsForm {
+  return {
+    sessionDays: settings.sessionMaxAge ? String(Math.round(settings.sessionMaxAge / 86400)) : '1',
+    pairingMinutes: settings.pairingTokenExpiry ? String(Math.round(settings.pairingTokenExpiry / 60)) : '15',
+    tunnelEnabled: settings.runtime?.tunnelEnabled !== false,
+    weixinEnabled: settings.runtime?.weixinEnabled !== false,
+    logLevel: settings.runtime?.logLevel ?? 'info',
+    proxyTimeoutMs: settings.runtime?.proxyRequestTimeoutMs ? String(settings.runtime.proxyRequestTimeoutMs) : '',
+  }
+}
+
+function SettingsTab(): ReactElement {
+  const [form, setForm] = useState<SettingsForm | null>(null)
+  const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      const payload = await apiGet<SettingsView>('/api/gateway-mobile/read/settings')
+      setForm(toSettingsForm(payload))
+      setLimits(payload.limits)
+      setError('')
+      setMessage('')
+    } catch (cause) {
+      setError(messageOf(cause))
     }
   }, [])
 
-  if (error) {
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const update = <K extends keyof SettingsForm,>(key: K, value: SettingsForm[K]): void => {
+    setForm((current) => (current === null ? current : { ...current, [key]: value }))
+    setMessage('')
+  }
+
+  const save = async (): Promise<void> => {
+    if (!form) return
+    setSaving(true)
+    setError('')
+    setMessage('')
+    try {
+      const patch: Record<string, unknown> = {
+        sessionMaxAge: Math.round(Number(form.sessionDays) * 86400),
+        pairingTokenExpiry: Math.round(Number(form.pairingMinutes) * 60),
+        tunnelEnabled: form.tunnelEnabled,
+        weixinEnabled: form.weixinEnabled,
+        logLevel: form.logLevel,
+      }
+      if (form.proxyTimeoutMs.trim() !== '') {
+        patch.proxyRequestTimeoutMs = Math.round(Number(form.proxyTimeoutMs))
+      }
+      const payload = await apiPost<SettingsView>('/api/gateway-mobile/admin/settings', patch)
+      setForm(toSettingsForm(payload))
+      setLimits(payload.limits)
+      setMessage('设置已保存并生效')
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error && form === null) {
     return (
       <ErrorCard title="设置不可用">
         <div className="gwmb-meta">{error}</div>
+        <div className="gwmb-note">只读与设置修改都需要本机 DSH UI；手机端为只读视图。</div>
       </ErrorCard>
     )
   }
-  if (!settings) return <div className="gwmb-meta">正在读取设置…</div>
+  if (form === null) return <div className="gwmb-meta">正在读取设置…</div>
 
-  const days = settings.sessionMaxAge ? Math.round(settings.sessionMaxAge / 86400) : '—'
-  const minutes = settings.pairingTokenExpiry ? Math.round(settings.pairingTokenExpiry / 60) : '—'
-  const runtime = settings.runtime ?? {}
+  const sessionMinMinutes = limits?.sessionMin ? Math.round(limits.sessionMin / 60) : 5
+  const sessionMaxDays = limits?.sessionMax ? Math.round(limits.sessionMax / 86400) : 90
+  const pairingMinMinutes = limits?.pairingMin ? Math.max(1, Math.round(limits.pairingMin / 60)) : 1
+  const pairingMaxMinutes = limits?.pairingMax ? Math.round(limits.pairingMax / 60) : 1440
+  const levels = ['debug', 'info', 'warn', 'error']
 
   return (
     <section className="gwmb-card">
-      <h3>设置（只读）</h3>
-      <div className="gwmb-meta" style={{ marginBottom: 8 }}>
-        修改设置请在独立管理台完成。
+      <h3>设置</h3>
+      <div className="gwmb-meta">修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。</div>
+
+      <div className="gwmb-form">
+        <label className="gwmb-form-row">
+          <span>设备会话时长（天）</span>
+          <input
+            className="gwmb-input"
+            type="number"
+            min="1"
+            max={sessionMaxDays}
+            value={form.sessionDays}
+            onChange={(event) => update('sessionDays', event.target.value)}
+          />
+          <span className="gwmb-meta gwmb-muted">最短约 {sessionMinMinutes} 分钟，最长 {sessionMaxDays} 天</span>
+        </label>
+
+        <label className="gwmb-form-row">
+          <span>配对码有效期（分钟）</span>
+          <input
+            className="gwmb-input"
+            type="number"
+            min={pairingMinMinutes}
+            max={pairingMaxMinutes}
+            value={form.pairingMinutes}
+            onChange={(event) => update('pairingMinutes', event.target.value)}
+          />
+          <span className="gwmb-meta gwmb-muted">{pairingMinMinutes}–{pairingMaxMinutes} 分钟</span>
+        </label>
+
+        <label className="gwmb-form-row">
+          <span>隧道开关</span>
+          <select
+            className="gwmb-select"
+            value={form.tunnelEnabled ? 'on' : 'off'}
+            onChange={(event) => update('tunnelEnabled', event.target.value === 'on')}
+          >
+            <option value="on">启用（Quick/Named Tunnel）</option>
+            <option value="off">禁用（仅回环访问）</option>
+          </select>
+        </label>
+
+        <label className="gwmb-form-row">
+          <span>微信通道</span>
+          <select
+            className="gwmb-select"
+            value={form.weixinEnabled ? 'on' : 'off'}
+            onChange={(event) => update('weixinEnabled', event.target.value === 'on')}
+          >
+            <option value="on">启用</option>
+            <option value="off">禁用</option>
+          </select>
+        </label>
+
+        <label className="gwmb-form-row">
+          <span>日志级别</span>
+          <select
+            className="gwmb-select"
+            value={form.logLevel}
+            onChange={(event) => update('logLevel', event.target.value)}
+          >
+            {levels.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="gwmb-form-row">
+          <span>DSH 代理超时（毫秒）</span>
+          <input
+            className="gwmb-input"
+            type="number"
+            min="1000"
+            step="1000"
+            placeholder="留空使用默认值"
+            value={form.proxyTimeoutMs}
+            onChange={(event) => update('proxyTimeoutMs', event.target.value)}
+          />
+        </label>
       </div>
-      <dl className="gwmb-kv">
-        <dt>设备会话时长</dt>
-        <dd>{days} 天</dd>
-        <dt>配对码有效期</dt>
-        <dd>{minutes} 分钟</dd>
-        <dt>隧道开关</dt>
-        <dd>{runtime.tunnelEnabled ? '启用' : '禁用'}</dd>
-        <dt>微信通道</dt>
-        <dd>{runtime.weixinEnabled ? '启用' : '禁用'}</dd>
-        <dt>日志级别</dt>
-        <dd>{runtime.logLevel ?? '—'}</dd>
-        <dt>DSH 代理超时</dt>
-        <dd>{runtime.proxyRequestTimeoutMs ? `${runtime.proxyRequestTimeoutMs} ms` : '—'}</dd>
-      </dl>
+
+      <div className="gwmb-actions">
+        <button className="gwmb-btn" type="button" disabled={saving} onClick={() => void save()}>
+          {saving ? '保存中…' : '保存设置'}
+        </button>
+        <button className="gwmb-btn" type="button" disabled={saving} onClick={() => void load()}>
+          放弃修改
+        </button>
+      </div>
+
+      {message ? <div className="gwmb-meta gwmb-ok">{message}</div> : null}
+      {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
+
+      <div className="gwmb-meta gwmb-muted">
+        密钥轮换、审计导出、OAuth 白名单等高级维护仍在独立管理台完成。
+      </div>
     </section>
   )
 }
@@ -818,7 +1024,15 @@ function WorkbenchPage(): ReactElement {
           </ErrorCard>
         ) : null}
 
-        {tab === 'overview' ? <OverviewTab ping={ping} refreshedAt={refreshedAt} bridgeReady={bridgeReady} /> : null}
+        {tab === 'overview' ? (
+          <OverviewTab
+            ping={ping}
+            refreshedAt={refreshedAt}
+            bridgeReady={bridgeReady}
+            local={local}
+            onRefresh={() => void load()}
+          />
+        ) : null}
         {tab === 'pairing' && local ? <PairingTab /> : null}
         {tab === 'devices' && local ? <DevicesTab /> : null}
         {tab === 'logs' && local ? <LogsTab /> : null}
