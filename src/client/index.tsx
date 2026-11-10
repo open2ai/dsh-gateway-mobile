@@ -1014,6 +1014,9 @@ function PairingTab(): ReactElement {
 
       <section className="gwmb-card">
         <h3>隧道与配对设置</h3>
+        <div className="gwmb-meta gwmb-muted">
+          这些配置决定手机如何连上本机、登录状态保持多久，以及配对码能使用多长时间。
+        </div>
         {settings ? (
           <div className="gwmb-form gwmb-form-4">
             <div className="gwmb-form-row">
@@ -1038,6 +1041,7 @@ function PairingTab(): ReactElement {
                 value={settings.proxyTimeoutMs}
                 onChange={(event) => updateSetting('proxyTimeoutMs', event.target.value)}
               />
+              <span className="gwmb-meta gwmb-muted">手机经隧道请求 DSH 时最多等待多久；超时会显示网关错误。留空沿用默认值。</span>
             </label>
             <label className="gwmb-form-row">
               <span>设备会话时长（天）</span>
@@ -1049,7 +1053,8 @@ function PairingTab(): ReactElement {
                 onChange={(event) => updateSetting('sessionDays', event.target.value)}
               />
               <span className="gwmb-meta gwmb-muted">
-                最短约 5 分钟，最长 {limits?.sessionMax ? Math.round(limits.sessionMax / 86400) : 90} 天
+                手机配对后保持登录的有效期，到期需重新配对。最短约 5 分钟，最长{' '}
+                {limits?.sessionMax ? Math.round(limits.sessionMax / 86400) : 90} 天。
               </span>
             </label>
             <label className="gwmb-form-row">
@@ -1062,8 +1067,9 @@ function PairingTab(): ReactElement {
                 onChange={(event) => updateSetting('pairingMinutes', event.target.value)}
               />
               <span className="gwmb-meta gwmb-muted">
+                配对二维码 / 配对链接的可用时间，过期后需重新生成。允许{' '}
                 {limits?.pairingMin ? Math.max(1, Math.round(limits.pairingMin / 60)) : 1}–
-                {limits?.pairingMax ? Math.round(limits.pairingMax / 60) : 1440} 分钟
+                {limits?.pairingMax ? Math.round(limits.pairingMax / 60) : 1440} 分钟。
               </span>
             </label>
           </div>
@@ -1909,6 +1915,9 @@ function WeixinTab(): ReactElement {
 
       <section className="gwmb-card">
         <h3>通知设置</h3>
+        <div className="gwmb-meta gwmb-muted">
+          决定微信是否作为通知通道，以及完成通知的合并与发送频率。
+        </div>
         <div className="gwmb-form">
           <div className="gwmb-form-row">
             <span>微信通道</span>
