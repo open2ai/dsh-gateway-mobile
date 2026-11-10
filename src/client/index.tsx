@@ -583,7 +583,7 @@ function PairingTab(): ReactElement {
                   aria-expanded={showCode}
                   onClick={() => setShowCode((value) => !value)}
                 >
-                  {showCode ? '隐藏配对码' : '展示配对码'}
+                  {showCode ? '隐藏配对码' : '查看配对码'}
                 </button>
               </div>
               {showCode ? (
