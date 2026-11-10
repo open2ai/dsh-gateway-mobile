@@ -190,6 +190,15 @@ const STYLE = `
 @media (max-width: 760px) { .gwmb-pairing-grid { grid-template-columns: minmax(0, 1fr); } }
 .gwmb-pairing-main { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 .gwmb-pairing-meta { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gwmb-link-field { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2); border-radius: var(--dsw-radius-md, 10px); padding: 8px 10px; min-width: 0; }
+.gwmb-link-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gwmb-link-label { font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.gwmb-link-value { font-size: 12px; font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; min-width: 0; }
+.gwmb-icon-btn { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 2px; border-radius: 6px; display: inline-flex; align-items: center; }
+.gwmb-icon-btn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.gwmb-icon-btn:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
+.gwmb-btn-primary { background: var(--dsw-alias-button-primary-fill); border-color: transparent; color: var(--dsw-alias-label-primary-foreground); }
+.gwmb-btn-primary:hover { background: var(--dsw-alias-button-primary-hover); }
 .gwmb-code-big { font-size: 30px; letter-spacing: .18em; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
 .gwmb-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
 .gwmb-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--dsw-alias-label-primary); }
@@ -450,12 +459,55 @@ function OverviewTab(props: {
   )
 }
 
+function EyeIcon(props: { size?: number }): ReactElement {
+  return (
+    <svg
+      width={props.size ?? 16}
+      height={props.size ?? 16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.6" />
+    </svg>
+  )
+}
+
+function EyeOffIcon(props: { size?: number }): ReactElement {
+  return (
+    <svg
+      width={props.size ?? 16}
+      height={props.size ?? 16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.6" />
+      <path d="M4 20 20 4" />
+    </svg>
+  )
+}
+
 function PairingTab(): ReactElement {
   const [data, setData] = useState<PairingView | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [tick, setTick] = useState(Date.now())
+  const [showEntry, setShowEntry] = useState(true)
+  const [showPairingLink, setShowPairingLink] = useState(false)
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -531,20 +583,52 @@ function PairingTab(): ReactElement {
         <section className="gwmb-card" aria-label="手机入口与链接">
           {data ? (
             <div className="gwmb-pairing-meta">
-              <div>
-                <div className="gwmb-meta">手机入口</div>
-                <div className="gwmb-code">{data.tunnel.url || '隧道未连接'}</div>
+              <div className="gwmb-link-field">
+                <div className="gwmb-link-head">
+                  <span className="gwmb-link-label">手机入口</span>
+                  <button
+                    className="gwmb-icon-btn"
+                    type="button"
+                    aria-label={showEntry ? '隐藏手机入口' : '显示手机入口'}
+                    title={showEntry ? '隐藏手机入口' : '显示手机入口'}
+                    onClick={() => setShowEntry((value) => !value)}
+                  >
+                    {showEntry ? <EyeOffIcon /> : <EyeIcon />}
+                  </button>
+                </div>
+                <div className="gwmb-link-value">
+                  {data.tunnel.url
+                    ? showEntry
+                      ? data.tunnel.url
+                      : '••••••••••••••••••••••••'
+                    : '隧道未连接'}
+                </div>
               </div>
-              <div>
-                <div className="gwmb-meta">配对链接</div>
-                <div className="gwmb-code">{data.pairingUrl}</div>
+
+              <div className="gwmb-link-field">
+                <div className="gwmb-link-head">
+                  <span className="gwmb-link-label">配对链接</span>
+                  <button
+                    className="gwmb-icon-btn"
+                    type="button"
+                    aria-label={showPairingLink ? '隐藏配对链接' : '显示配对链接'}
+                    title={showPairingLink ? '隐藏配对链接' : '显示配对链接'}
+                    onClick={() => setShowPairingLink((value) => !value)}
+                  >
+                    {showPairingLink ? <EyeOffIcon /> : <EyeIcon />}
+                  </button>
+                </div>
+                <div className="gwmb-link-value">
+                  {showPairingLink ? data.pairingUrl : '••••••••••••••••••••••••'}
+                </div>
               </div>
+
               <div className={`gwmb-meta ${data.status.valid ? 'gwmb-ok' : 'gwmb-warn'}`}>
                 有效期 {formatDuration(remaining)} ·{' '}
                 {data.status.valid ? '当前配对码有效' : data.status.used ? '配对码已使用' : '配对码已过期'}
               </div>
               <div className="gwmb-actions">
-                <button className="gwmb-btn" type="button" onClick={() => void copy()}>
+                <button className="gwmb-btn gwmb-btn-primary" type="button" onClick={() => void copy()}>
                   {copied ? '已复制' : '复制配对链接'}
                 </button>
                 <button className="gwmb-btn" type="button" disabled={busy} onClick={() => void regenerate()}>
