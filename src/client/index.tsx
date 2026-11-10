@@ -515,12 +515,10 @@ function PairingTab(): ReactElement {
       ) : null}
 
       <div className="gwmb-pairing-grid">
-        <section className="gwmb-card">
-          <h3>扫码配对</h3>
+        <section className="gwmb-card" aria-label="扫码配对">
           {data ? (
             <div className="gwmb-pairing-main">
               <div className="gwmb-qr" dangerouslySetInnerHTML={{ __html: data.qrSvg }} />
-              <div className="gwmb-meta">8 位配对码</div>
               <div className="gwmb-code-big">{data.code}</div>
               <div className="gwmb-meta gwmb-muted">手机扫码，或在手机入口输入该配对码</div>
             </div>
@@ -530,8 +528,7 @@ function PairingTab(): ReactElement {
           {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
         </section>
 
-        <section className="gwmb-card">
-          <h3>手机入口与链接</h3>
+        <section className="gwmb-card" aria-label="手机入口与链接">
           {data ? (
             <div className="gwmb-pairing-meta">
               <div>
