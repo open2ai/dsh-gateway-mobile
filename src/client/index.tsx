@@ -1102,11 +1102,15 @@ function DevicesTab(): ReactElement {
 }
 
 function LogsTab(): ReactElement {
+  const [view, setView] = useState<'runtime' | 'weixin'>('runtime')
   const [logs, setLogs] = useState<LogItem[] | null>(null)
   const [level, setLevel] = useState('all')
   const [error, setError] = useState('')
   const [approvals, setApprovals] = useState<unknown[] | null>(null)
   const [approvalsError, setApprovalsError] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportMessage, setExportMessage] = useState('')
+  const [exportError, setExportError] = useState('')
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -1135,7 +1139,30 @@ function LogsTab(): ReactElement {
     return () => window.clearInterval(timer)
   }, [load, loadApprovals])
 
-  if (error) {
+  const exportAudit = async (): Promise<void> => {
+    setExporting(true)
+    setExportMessage('')
+    setExportError('')
+    try {
+      const payload = await apiGet<Record<string, unknown>>('/api/gateway-mobile/read/audit?limit=500')
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `gateway-mobile-audit-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+      document.body.append(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      setExportMessage('审计日志已导出')
+    } catch (cause) {
+      setExportError(messageOf(cause))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  if (error && view === 'runtime') {
     return (
       <ErrorCard title="日志不可用">
         <div className="gwmb-meta">{error}</div>
@@ -1147,52 +1174,77 @@ function LogsTab(): ReactElement {
   const visible = (logs ?? []).filter((item) => level === 'all' || item.level === level)
 
   return (
-    <>
-      <section className="gwmb-card">
-        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
-          <h3>最近日志（{visible.length}）</h3>
-          <select className="gwmb-select" value={level} onChange={(event) => setLevel(event.target.value)}>
-            {levels.map((item) => (
-              <option key={item} value={item}>
-                {item === 'all' ? '全部级别' : item}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          {visible.map((item, index) => (
-            <div className="gwmb-log" key={`${item.timestamp}-${index}`}>
-              <span className="gwmb-log-time">{formatTime(item.timestamp)}</span>
-              <span className={item.level === 'error' ? 'gwmb-bad' : item.level === 'warn' ? 'gwmb-warn' : 'gwmb-muted'}>
-                {item.level}
-              </span>
-              <span className="gwmb-log-msg">{item.message}</span>
-            </div>
-          ))}
-          {logs !== null && visible.length === 0 ? <div className="gwmb-meta">暂无日志。</div> : null}
-          {logs === null ? <div className="gwmb-meta">正在读取日志…</div> : null}
-        </div>
-        <div className="gwmb-meta">审计导出在「设置 → 安全与维护」中完成。</div>
-      </section>
-
-      <section className="gwmb-card">
-        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
-          <h3>微信审批历史（{approvals?.length ?? 0}）</h3>
-          <button className="gwmb-btn gwmb-btn-sm" type="button" onClick={() => void loadApprovals()}>
-            刷新
+    <section className="gwmb-card">
+      <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
+        <h3>日志</h3>
+        <div className="gwmb-actions">
+          <button
+            className={`gwmb-btn gwmb-btn-sm ${view === 'runtime' ? 'gwmb-btn-primary' : ''}`}
+            type="button"
+            onClick={() => setView('runtime')}
+          >
+            运行日志
+          </button>
+          <button
+            className={`gwmb-btn gwmb-btn-sm ${view === 'weixin' ? 'gwmb-btn-primary' : ''}`}
+            type="button"
+            onClick={() => setView('weixin')}
+          >
+            微信审批历史（{approvals?.length ?? 0}）
+          </button>
+          <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={exporting} onClick={() => void exportAudit()}>
+            {exporting ? '导出中…' : '导出审计日志'}
           </button>
         </div>
-        {approvalsError ? <div className="gwmb-meta gwmb-bad">{approvalsError}</div> : null}
-        <div className="gwmb-code" style={{ maxHeight: 220, overflowY: 'auto' }}>
-          {approvals === null
-            ? '正在读取审批历史…'
-            : approvals.length === 0
-              ? '暂无审批记录'
-              : approvals.map((item, index) => <div key={index}>{JSON.stringify(item)}</div>)}
-        </div>
-        <div className="gwmb-meta gwmb-muted">审批历史与微信审批、提问、计划审核相关；手机端不显示。</div>
-      </section>
-    </>
+      </div>
+
+      {exportMessage ? <div className="gwmb-meta gwmb-ok">{exportMessage}</div> : null}
+      {exportError ? <div className="gwmb-meta gwmb-bad">{exportError}</div> : null}
+
+      {view === 'runtime' ? (
+        <>
+          <div className="gwmb-row" style={{ justifyContent: 'flex-end' }}>
+            <select className="gwmb-select" value={level} onChange={(event) => setLevel(event.target.value)}>
+              {levels.map((item) => (
+                <option key={item} value={item}>
+                  {item === 'all' ? '全部级别' : item}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            {visible.map((item, index) => (
+              <div className="gwmb-log" key={`${item.timestamp}-${index}`}>
+                <span className="gwmb-log-time">{formatTime(item.timestamp)}</span>
+                <span className={item.level === 'error' ? 'gwmb-bad' : item.level === 'warn' ? 'gwmb-warn' : 'gwmb-muted'}>
+                  {item.level}
+                </span>
+                <span className="gwmb-log-msg">{item.message}</span>
+              </div>
+            ))}
+            {logs !== null && visible.length === 0 ? <div className="gwmb-meta">暂无日志。</div> : null}
+            {logs === null ? <div className="gwmb-meta">正在读取日志…</div> : null}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="gwmb-row" style={{ justifyContent: 'flex-end' }}>
+            <button className="gwmb-btn gwmb-btn-sm" type="button" onClick={() => void loadApprovals()}>
+              刷新
+            </button>
+          </div>
+          {approvalsError ? <div className="gwmb-meta gwmb-bad">{approvalsError}</div> : null}
+          <div className="gwmb-code" style={{ maxHeight: 420, overflowY: 'auto' }}>
+            {approvals === null
+              ? '正在读取审批历史…'
+              : approvals.length === 0
+                ? '暂无审批记录'
+                : approvals.map((item, index) => <div key={index}>{JSON.stringify(item)}</div>)}
+          </div>
+          <div className="gwmb-meta gwmb-muted">审批历史与微信审批、提问、计划审核相关；手机端不显示。</div>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -1454,29 +1506,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       setOAuth(next)
       setOAuthText(next.allowedUsers.join('\n'))
       setMessage('OAuth 白名单已保存')
-    } catch (cause) {
-      setError(messageOf(cause))
-    } finally {
-      setMaintenanceBusy('')
-    }
-  }
-
-  const exportAudit = async (): Promise<void> => {
-    setMaintenanceBusy('audit')
-    setError('')
-    setMessage('')
-    try {
-      const payload = await apiGet<Record<string, unknown>>('/api/gateway-mobile/read/audit?limit=500')
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `gateway-mobile-audit-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
-      document.body.append(anchor)
-      anchor.click()
-      anchor.remove()
-      URL.revokeObjectURL(url)
-      setMessage('审计日志已导出')
     } catch (cause) {
       setError(messageOf(cause))
     } finally {
@@ -1849,20 +1878,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
           {oauth
             ? `已启用 provider：${oauth.providers.join(', ') || '无'}${oauth.requireOAuth ? ' · 强制绑定' : ''}`
             : 'OAuth 状态不可用'}
-        </div>
-
-        <div className="gwmb-actions">
-          <button
-            className="gwmb-btn"
-            type="button"
-            disabled={maintenanceBusy !== ''}
-            onClick={() => void exportAudit()}
-          >
-            {maintenanceBusy === 'audit' ? '导出中…' : '导出审计日志（JSON）'}
-          </button>
-        </div>
-        <div className="gwmb-meta gwmb-muted">
-          审计导出包含最近的运行与审计记录。
         </div>
       </section>
 
