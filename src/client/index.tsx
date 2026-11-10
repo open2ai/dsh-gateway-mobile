@@ -252,6 +252,7 @@ const STYLE = `
 .gwmb-log-time { color: var(--dsw-alias-label-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gwmb-log-msg { min-width: 0; overflow-wrap: anywhere; word-break: break-word; color: var(--dsw-alias-label-secondary); }
 .gwmb-select { font-size: 13px; padding: 5px 8px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
+.gwmb-select-sm { font-size: 12px; padding: 3px 6px; }
 .gwmb-kv { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 16px; font-size: 13px; }
 .gwmb-kv dt { color: var(--dsw-alias-label-tertiary); }
 .gwmb-kv dd { margin: 0; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
@@ -1109,6 +1110,7 @@ function LogsTab(): ReactElement {
   const [approvals, setApprovals] = useState<unknown[] | null>(null)
   const [approvalsError, setApprovalsError] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [exportRange, setExportRange] = useState<'24h' | '7d' | 'all'>('24h')
   const [exportMessage, setExportMessage] = useState('')
   const [exportError, setExportError] = useState('')
 
@@ -1144,17 +1146,23 @@ function LogsTab(): ReactElement {
     setExportMessage('')
     setExportError('')
     try {
-      const payload = await apiGet<Record<string, unknown>>('/api/gateway-mobile/read/audit?limit=500')
+      const dayMs = 86_400_000
+      const rangeMs = exportRange === '24h' ? dayMs : exportRange === '7d' ? 7 * dayMs : 0
+      const sinceQuery = rangeMs > 0 ? `&since=${Date.now() - rangeMs}` : ''
+      const payload = await apiGet<Record<string, unknown>>(`/api/gateway-mobile/read/audit?limit=500${sinceQuery}`)
+      const rangeLabel = exportRange === '24h' ? '24h' : exportRange === '7d' ? '7d' : 'all'
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = `gateway-mobile-audit-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+      anchor.download = `gateway-mobile-audit-${rangeLabel}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
       document.body.append(anchor)
       anchor.click()
       anchor.remove()
       URL.revokeObjectURL(url)
-      setExportMessage('审计日志已导出')
+      setExportMessage(
+        `审计日志已导出（${exportRange === '24h' ? '最近 24 小时' : exportRange === '7d' ? '最近 7 天' : '全部，最多 500 条'}）`,
+      )
     } catch (cause) {
       setExportError(messageOf(cause))
     } finally {
@@ -1192,6 +1200,17 @@ function LogsTab(): ReactElement {
           >
             微信审批历史（{approvals?.length ?? 0}）
           </button>
+          <select
+            className="gwmb-select gwmb-select-sm"
+            value={exportRange}
+            disabled={exporting}
+            aria-label="审计导出范围"
+            onChange={(event) => setExportRange(event.target.value as '24h' | '7d' | 'all')}
+          >
+            <option value="24h">最近 24 小时</option>
+            <option value="7d">最近 7 天</option>
+            <option value="all">全部（最多 500 条）</option>
+          </select>
           <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={exporting} onClick={() => void exportAudit()}>
             {exporting ? '导出中…' : '导出审计日志'}
           </button>
