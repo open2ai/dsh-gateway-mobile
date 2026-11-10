@@ -213,6 +213,13 @@ const STYLE = `
 .gwmb-code-toggle { display: flex; justify-content: center; }
 .gwmb-btn-primary { background: var(--dsw-alias-button-primary-fill); border-color: transparent; color: var(--dsw-alias-label-primary-foreground); }
 .gwmb-btn-primary:hover { background: var(--dsw-alias-button-primary-hover); }
+.gwmb-btn-danger { background: var(--dsw-alias-state-error-primary); border-color: transparent; color: #fff; }
+.gwmb-btn-danger:hover { filter: brightness(1.08); }
+.gwmb-modal-mask { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.45); }
+.gwmb-modal { box-sizing: border-box; width: min(420px, 100%); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent); padding: 18px; display: flex; flex-direction: column; gap: 12px; color: var(--dsw-alias-label-primary); }
+.gwmb-modal h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--dsw-alias-label-primary); text-transform: none; letter-spacing: 0; }
+.gwmb-modal-message { font-size: 13px; line-height: 1.6; color: var(--dsw-alias-label-secondary); }
+.gwmb-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
 .gwmb-code-big { font-size: 30px; letter-spacing: .18em; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
 .gwmb-row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
 .gwmb-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--dsw-alias-label-primary); }
@@ -340,6 +347,70 @@ function InfoCard(props: { title: string; value?: string; tone?: string; childre
       </div>
       {props.children}
     </section>
+  )
+}
+
+interface ConfirmState {
+  title: string
+  message: string
+  confirmText: string
+  danger: boolean
+  action: () => void
+}
+
+function Modal(props: { title: string; children: ReactNode; actions: ReactNode; onClose: () => void }): ReactElement {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') props.onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [props.onClose])
+
+  return (
+    <div className="gwmb-modal-mask" onClick={props.onClose}>
+      <div
+        className="gwmb-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={props.title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3>{props.title}</h3>
+        {props.children}
+        <div className="gwmb-modal-actions">{props.actions}</div>
+      </div>
+    </div>
+  )
+}
+
+function ConfirmDialog(props: { state: ConfirmState; busy?: boolean; onClose: () => void }): ReactElement {
+  const { state } = props
+  return (
+    <Modal
+      title={state.title}
+      onClose={props.onClose}
+      actions={
+        <>
+          <button className="gwmb-btn" type="button" disabled={props.busy === true} onClick={props.onClose}>
+            取消
+          </button>
+          <button
+            className={`gwmb-btn ${state.danger ? 'gwmb-btn-danger' : 'gwmb-btn-primary'}`}
+            type="button"
+            disabled={props.busy === true}
+            onClick={() => {
+              state.action()
+              props.onClose()
+            }}
+          >
+            {props.busy === true ? '处理中…' : state.confirmText}
+          </button>
+        </>
+      }
+    >
+      <div className="gwmb-modal-message">{state.message}</div>
+    </Modal>
   )
 }
 
@@ -734,6 +805,8 @@ function DevicesTab(): ReactElement {
   const [actionError, setActionError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState('')
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
+  const [renameTarget, setRenameTarget] = useState<{ device: DeviceView; value: string } | null>(null)
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -771,25 +844,40 @@ function DevicesTab(): ReactElement {
   }
 
   const rename = (device: DeviceView): void => {
-    const current = device.displayName || device.deviceName
-    const name = window.prompt('设备名称', current)
-    if (name === null || name.trim() === '') return
-    void applyAction(device.deviceId, 'rename', { deviceId: device.deviceId, deviceName: name.trim() })
+    setRenameTarget({ device, value: device.displayName || device.deviceName })
+  }
+
+  const submitRename = (): void => {
+    if (!renameTarget) return
+    const name = renameTarget.value.trim()
+    if (name === '') return
+    const deviceId = renameTarget.device.deviceId
+    setRenameTarget(null)
+    void applyAction(deviceId, 'rename', { deviceId, deviceName: name })
   }
 
   const revoke = (device: DeviceView): void => {
     const name = device.displayName || device.deviceName
-    if (!window.confirm(`撤销设备「${name}」？该设备会立即失效。`)) return
-    void applyAction(device.deviceId, 'revoke', { deviceId: device.deviceId })
+    setConfirmState({
+      title: '撤销设备',
+      message: `撤销「${name}」？该设备会立即失效，需要重新配对才能再次访问。`,
+      confirmText: '撤销',
+      danger: true,
+      action: () => void applyAction(device.deviceId, 'revoke', { deviceId: device.deviceId }),
+    })
   }
 
   const remove = (device: DeviceView): void => {
-    if (!window.confirm('永久删除该设备记录？只有已撤销或已过期的记录可以删除。')) return
-    void applyAction(device.deviceId, 'delete', { deviceId: device.deviceId })
+    setConfirmState({
+      title: '删除设备记录',
+      message: '永久删除该设备记录？只有已撤销或已过期的记录可以删除，此操作不可恢复。',
+      confirmText: '删除',
+      danger: true,
+      action: () => void applyAction(device.deviceId, 'delete', { deviceId: device.deviceId }),
+    })
   }
 
-  const purge = async (): Promise<void> => {
-    if (!window.confirm('删除所有已撤销/已过期的设备记录？此操作不可恢复。')) return
+  const runPurge = async (): Promise<void> => {
     setBusy('purge')
     setActionError('')
     setMessage('')
@@ -807,6 +895,16 @@ function DevicesTab(): ReactElement {
     }
   }
 
+  const purge = (): void => {
+    setConfirmState({
+      title: '清理设备记录',
+      message: '删除所有已撤销 / 已过期的设备记录？此操作不可恢复。',
+      confirmText: '清理',
+      danger: true,
+      action: () => void runPurge(),
+    })
+  }
+
   if (error) {
     return (
       <ErrorCard title="设备列表不可用">
@@ -816,9 +914,10 @@ function DevicesTab(): ReactElement {
   }
 
   return (
-    <section className="gwmb-card">
-      <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
-        <h3>已配对设备（{devices?.length ?? 0}）</h3>
+    <>
+      <section className="gwmb-card">
+        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
+          <h3>已配对设备（{devices?.length ?? 0}）</h3>
         <div className="gwmb-actions">
           <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={busy !== ''} onClick={() => void purge()}>
             {busy === 'purge' ? '清理中…' : '清理已撤销/过期'}
@@ -911,7 +1010,47 @@ function DevicesTab(): ReactElement {
         </table>
       </div>
       {devices === null ? <div className="gwmb-meta">正在读取设备…</div> : null}
-    </section>
+      </section>
+
+      {renameTarget ? (
+        <Modal
+          title="重命名设备"
+          onClose={() => setRenameTarget(null)}
+          actions={
+            <>
+              <button className="gwmb-btn" type="button" onClick={() => setRenameTarget(null)}>
+                取消
+              </button>
+              <button
+                className="gwmb-btn gwmb-btn-primary"
+                type="button"
+                disabled={renameTarget.value.trim() === ''}
+                onClick={submitRename}
+              >
+                保存
+              </button>
+            </>
+          }
+        >
+          <div className="gwmb-modal-message">
+            给「{renameTarget.device.displayName || renameTarget.device.deviceName}」设置一个新名称
+          </div>
+          <input
+            className="gwmb-input"
+            value={renameTarget.value}
+            autoFocus
+            onChange={(event) => setRenameTarget({ ...renameTarget, value: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') submitRename()
+            }}
+          />
+        </Modal>
+      ) : null}
+
+      {confirmState ? (
+        <ConfirmDialog state={confirmState} busy={busy !== ''} onClose={() => setConfirmState(null)} />
+      ) : null}
+    </>
   )
 }
 
@@ -1072,6 +1211,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const [loginStatus, setLoginStatus] = useState<WeixinLoginView | null>(null)
   const [loginBusy, setLoginBusy] = useState(false)
   const [approvals, setApprovals] = useState<unknown[] | null>(null)
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
   const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
   const [version, setVersion] = useState('')
   const [error, setError] = useState('')
@@ -1198,8 +1338,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     }
   }
 
-  const rotateKey = async (): Promise<void> => {
-    if (!window.confirm('轮换密钥后，新会话将使用新密钥，旧会话仍可验证。确定继续？')) return
+  const doRotateKey = async (): Promise<void> => {
     setMaintenanceBusy('key')
     setError('')
     setMessage('')
@@ -1211,6 +1350,16 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     } finally {
       setMaintenanceBusy('')
     }
+  }
+
+  const rotateKey = (): void => {
+    setConfirmState({
+      title: '轮换密钥',
+      message: '轮换后新会话使用新密钥，旧会话仍可验证。确定继续？',
+      confirmText: '轮换',
+      danger: false,
+      action: () => void doRotateKey(),
+    })
   }
 
   const saveOAuth = async (): Promise<void> => {
@@ -1288,8 +1437,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     }
   }
 
-  const logoutWeixin = async (): Promise<void> => {
-    if (!window.confirm('断开微信连接？')) return
+  const doLogoutWeixin = async (): Promise<void> => {
     setLoginBusy(true)
     setError('')
     try {
@@ -1306,6 +1454,16 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     } finally {
       setLoginBusy(false)
     }
+  }
+
+  const logoutWeixin = (): void => {
+    setConfirmState({
+      title: '断开微信连接',
+      message: '断开后需要重新扫码登录，才能继续转发审批、提问和完成通知。',
+      confirmText: '断开',
+      danger: true,
+      action: () => void doLogoutWeixin(),
+    })
   }
 
   const loadApprovals = async (): Promise<void> => {
@@ -1647,7 +1805,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
           </button>
         </div>
         <div className="gwmb-meta gwmb-muted">
-          审计导出包含最近的运行与审计记录；微信扫码登录与审批历史仍在独立管理台。
+          审计导出包含最近的运行与审计记录。
         </div>
       </section>
 
@@ -1666,6 +1824,14 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       <div className="gwmb-meta gwmb-muted">
         修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。独立管理台可在「安全与维护」中关闭，之后工作台即为唯一管理入口。
       </div>
+
+      {confirmState ? (
+        <ConfirmDialog
+          state={confirmState}
+          busy={maintenanceBusy !== '' || loginBusy}
+          onClose={() => setConfirmState(null)}
+        />
+      ) : null}
     </>
   )
 }
