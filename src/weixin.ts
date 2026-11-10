@@ -371,6 +371,10 @@ export class WeixinChannel {
   /** Poll the active QR once. Admin UI calls this on a timer. */
   async pollLogin(): Promise<WeixinLoginStatus> {
     if (!this.login) return this.loginStatus()
+    // A scanned QR whose token is waiting for local approval is terminal: polling
+    // again would only re-read the same "confirmed" answer, overwrite the pending
+    // credentials and spam the audit log. Re-read the QR status only until then.
+    if (this.login.state === 'pending') return this.loginStatus()
     const url = new URL('/ilink/bot/get_qrcode_status', this.baseUrl())
     url.searchParams.set('qrcode', this.login.qrcode)
     const headers: Record<string, string> = { 'iLink-App-ClientVersion': LOGIN_HEADER_VERSION }

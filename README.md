@@ -4,7 +4,7 @@
 
 A DSH host plugin that exposes your local `dsh web` session through an outbound **Cloudflare Quick Tunnel**, with one-time phone pairing and an optional **WeChat ClawBot/iLink** connection. DSH keeps listening on loopback; the plugin runs its own loopback gateway (default `127.0.0.1:3091`) and never exposes DSH's cookie.
 
-Status: **v0.2.0-next.0** (workbench preview). Quick Tunnel is a Cloudflare testing/development facility.
+Status: **v0.2.0**. Quick Tunnel is a Cloudflare testing/development facility.
 
 ## Quick start
 

@@ -20,6 +20,7 @@ function harness() {
     revoke: [],
     remove: [],
     purged: 0,
+    revokedAll: 0,
     adminConsole: 0,
   }
   const ctx = {
@@ -102,7 +103,22 @@ function harness() {
         calls.purged += 1
         return 2
       },
+      revokeAll() {
+        calls.revokedAll += 1
+        return 1
+      },
     },
+    buildHealth: async () => ({
+      ok: true,
+      version: '0.2.0-next.0',
+      startedAt: '2026-11-10T00:00:00.000Z',
+      uptime: 3600,
+      serverTime: '2026-11-10T01:00:00.000Z',
+      checks: [
+        { name: 'gateway', ok: true, data: { port: 3091, uptime: 3600 } },
+        { name: 'weixin', ok: true, optional: true, detail: 'idle' },
+      ],
+    }),
     adminConsoleEnabled: () => true,
     updateAdminConsoleEnabled: async (value) => {
       calls.adminConsole += 1
@@ -186,6 +202,7 @@ test('workbench bridge registers read routes plus the pairing regenerate action'
       'GET /api/gateway-mobile/read/pairing',
       'GET /api/gateway-mobile/read/devices',
       'GET /api/gateway-mobile/read/logs',
+      'GET /api/gateway-mobile/read/health',
       'GET /api/gateway-mobile/read/settings',
       'POST /api/gateway-mobile/admin/pairing/regenerate',
       'POST /api/gateway-mobile/admin/settings',
@@ -205,6 +222,7 @@ test('workbench bridge registers read routes plus the pairing regenerate action'
       'POST /api/gateway-mobile/admin/devices/revoke',
       'POST /api/gateway-mobile/admin/devices/delete',
       'POST /api/gateway-mobile/admin/devices/purge',
+      'POST /api/gateway-mobile/admin/devices/revoke-all',
     ],
   )
   assert.equal(effects.length, registered.length)
@@ -260,6 +278,7 @@ test('local-only reads and regeneration reject tunnel-proxied callers', async ()
     '/api/gateway-mobile/read/pairing',
     '/api/gateway-mobile/read/devices',
     '/api/gateway-mobile/read/logs',
+    '/api/gateway-mobile/read/health',
     '/api/gateway-mobile/read/settings',
   ]
   for (const path of localReads) {
@@ -401,6 +420,10 @@ test('local device actions and the admin-console flag reach the gateway', async 
   assert.deepEqual(calls.remove, [deviceId])
   assert.equal((await post('/api/gateway-mobile/admin/devices/purge', { confirmText: 'DELETE REVOKED' })).status, 200)
   assert.equal(calls.purged, 1)
+  assert.equal((await post('/api/gateway-mobile/admin/devices/revoke-all', { confirmText: 'revoke all' })).status, 400)
+  assert.equal(calls.revokedAll, 0)
+  assert.equal((await post('/api/gateway-mobile/admin/devices/revoke-all', { confirmText: 'REVOKE ALL' })).status, 200)
+  assert.equal(calls.revokedAll, 1)
 
   assert.equal((await post('/api/gateway-mobile/admin/settings', { adminConsoleEnabled: false })).status, 200)
   assert.equal(calls.adminConsole, 1)
@@ -435,4 +458,13 @@ test('local reads expose pairing, devices, logs and settings payloads', async ()
   const settingsBody = await settings.json()
   assert.equal(settingsBody.sessionMaxAge, 86400)
   assert.equal(settingsBody.runtime.tunnelEnabled, true)
+
+  const health = await routeById(registered, '/api/gateway-mobile/read/health').fetch(
+    new Request('http://127.0.0.1:3080/api/gateway-mobile/read/health'),
+  )
+  assert.equal(health.status, 200)
+  const healthBody = await health.json()
+  assert.equal(healthBody.ok, true)
+  assert.equal(healthBody.checks.length, 2)
+  assert.equal(healthBody.checks[0].name, 'gateway')
 })

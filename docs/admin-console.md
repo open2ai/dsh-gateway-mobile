@@ -8,6 +8,12 @@ page and admin APIs work without a device session on first run so the pairing QR
 shown before any phone is paired. The admin console is a zh-CN operator surface; the
 phone PWA pages follow the browser language (zh/en).
 
+The same maintenance surface is available in the DSH Web UI workbench (page
+`移动端网关`): diagnostics/deep health, capabilities, devices (with filters and
+revoke-all) and logs are served from the same live gateway instance through
+local-only bridge routes, so the standalone console is a fallback rather than a
+requirement. Only the phone-side connectivity self-test (`/diag`) still lives here.
+
 - **Overview**: a compact status strip with four chips (gateway, public tunnel, DSH upstream,
   WeChat bot) whose state comes from `/admin/health?deep=1`; a failing check surfaces as one
   alert row with a **查看诊断** shortcut, and missing DSH capabilities as a single warning

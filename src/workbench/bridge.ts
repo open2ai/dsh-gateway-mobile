@@ -233,6 +233,18 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
       }),
     },
     {
+      // Deep health for the workbench diagnostics: the same checks the
+      // standalone console shows, served from the live gateway instance.
+      path: '/api/gateway-mobile/read/health',
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        return json(await gateway.buildHealth())
+      }),
+    },
+    {
       path: '/api/gateway-mobile/read/settings',
       methods: ['GET'],
       requestBody: 'buffered',
@@ -535,6 +547,19 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
         if (body.confirmText !== 'DELETE REVOKED') return errorResponse('确认文本不匹配', 400, 1002)
         const deleted = gateway.devices.purgeInactive()
         return json({ deleted, devices: deviceList(gateway) })
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/devices/revoke-all',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as { confirmText?: unknown }
+        if (body.confirmText !== 'REVOKE ALL') return errorResponse('确认文本不匹配', 400, 1002)
+        const revoked = gateway.devices.revokeAll()
+        return json({ revoked, devices: deviceList(gateway) })
       }),
     },
   ]

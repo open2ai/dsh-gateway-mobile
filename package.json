@@ -1,6 +1,6 @@
 {
   "name": "dsh-gateway-mobile",
-  "version": "0.2.0-next.0",
+  "version": "0.2.0",
   "description": "Secure DSH mobile and WeChat gateway: Cloudflare Quick Tunnel, one-time pairing, WeChat ClawBot/iLink chat, approvals, questions, and notifications.",
   "type": "module",
   "main": "lib/index.js",

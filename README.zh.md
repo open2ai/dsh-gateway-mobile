@@ -4,7 +4,7 @@
 
 一个 DSH Host 插件：通过出站 **Cloudflare Quick Tunnel** 访问本机 `dsh web` 会话，支持手机一次性配对，也可选接入 **微信 ClawBot/iLink**。DSH 始终监听回环地址；插件运行自己的回环网关（默认 `127.0.0.1:3091`），不会把 DSH 的 Cookie 暴露出去。
 
-状态：**v0.2.0-next.0**（工作台预览版）。Quick Tunnel 是 Cloudflare 的测试/开发设施。
+状态：**v0.2.0**。Quick Tunnel 是 Cloudflare 的测试/开发设施。
 
 ## 快速开始
 

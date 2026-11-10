@@ -20,7 +20,7 @@
  * @module dsh-gateway-mobile/lib/client
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
 export const name = 'dsh-gateway-mobile/workbench'
@@ -60,7 +60,7 @@ const DICTIONARIES: Record<string, Record<string, string>> = {
   en: { panel: 'Mobile Gateway' },
 }
 
-type Tab = 'overview' | 'pairing' | 'weixin' | 'devices' | 'logs' | 'settings'
+type Tab = 'overview' | 'pairing' | 'weixin' | 'devices' | 'logs' | 'settings' | 'help'
 
 interface TunnelView {
   enabled: boolean
@@ -122,6 +122,7 @@ interface DeviceView {
   createdAt: string
   lastActiveAt: string
   lastIp: string
+  oauthBindings?: Array<{ provider: string; username: string; boundAt?: string }>
   isOnline: boolean
   isCurrent: boolean
   revoked: boolean
@@ -132,6 +133,33 @@ interface LogItem {
   timestamp: string
   level: string
   message: string
+}
+
+interface HealthCheckView {
+  name: string
+  ok: boolean
+  optional?: boolean
+  detail?: string
+  data?: Record<string, unknown>
+}
+
+interface HealthView {
+  ok: boolean
+  version: string
+  startedAt: string
+  uptime: number
+  serverTime: string
+  checks: HealthCheckView[]
+}
+
+/** One WeChat approval-history entry (`weixin-approval-history.json`). */
+interface ApprovalItem {
+  at: number
+  id: string
+  sessionId: string
+  toolName: string
+  reason: string
+  status: string
 }
 
 interface SettingsView {
@@ -156,7 +184,7 @@ interface SettingsView {
  * follows the active DSH theme instead of assuming a light background.
  */
 const STYLE = `
-.gwmb-page { box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 18px; padding: 28px clamp(16px, 4vw, 48px) 16px; max-width: 1080px; margin: 0 auto; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); }
+.gwmb-page { box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 18px; padding: 28px clamp(16px, 4vw, 48px) 16px; max-width: 1200px; margin: 0 auto; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); }
 .gwmb-page *, .gwmb-page *::before, .gwmb-page *::after { box-sizing: border-box; }
 .gwmb-head, .gwmb-tabs { flex: 0 0 auto; }
 .gwmb-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; overflow-x: hidden; padding-bottom: 0; }
@@ -273,11 +301,44 @@ const STYLE = `
 .gwmb-kv { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 16px; font-size: 13px; }
 .gwmb-kv dt { color: var(--dsw-alias-label-tertiary); }
 .gwmb-kv dd { margin: 0; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+.gwmb-faq { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.gwmb-faq:last-of-type { border-bottom: none; padding-bottom: 0; }
+.gwmb-faq-q { font-size: 13px; color: var(--dsw-alias-label-primary); }
+.gwmb-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gwmb-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gwmb-toolbar > h3 { margin: 0; flex: 0 0 auto; }
+.gwmb-toolbar-end { margin-left: auto; flex: 0 0 auto; }
+.gwmb-btn.gwmb-btn-icon { width: 30px; padding: 0; justify-content: center; }
+/* Icon button that stays pressed/tinted while its option is enabled. */
+.gwmb-btn.gwmb-btn-icon-on { color: var(--dsw-alias-link); border-color: color-mix(in srgb, var(--dsw-alias-link) 40%, transparent); background: color-mix(in srgb, var(--dsw-alias-link) 12%, transparent); }
+.gwmb-btn.gwmb-btn-icon-on:hover:not(:disabled) { background: color-mix(in srgb, var(--dsw-alias-link) 18%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-link) 50%, transparent); }
+/* Press feedback for every action that is not a toggle. */
+.gwmb-btn:active:not(:disabled), .gwmb-icon-btn:active:not(:disabled) { transform: translateY(1px); background: var(--dsw-alias-interactive-bg-active); }
+.gwmb-refresh-note { animation: gwmb-fade-in .18s ease-out; }
+@keyframes gwmb-fade-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.gwmb-spin { animation: gwmb-spin .9s linear infinite; }
+@keyframes gwmb-spin { to { transform: rotate(360deg); } }
+.gwmb-input.gwmb-search { flex: 1 1 160px; width: 160px; min-width: 140px; max-width: 300px; box-sizing: border-box; }
+.gwmb-check-list { display: flex; flex-direction: column; }
+.gwmb-check-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 13px; }
+.gwmb-check-row:last-child { border-bottom: none; }
+.gwmb-check-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gwmb-check-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
+.gwmb-check-state { font-size: 12px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+.gwmb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); }
+.gwmb-dot-ok { background: var(--dsw-alias-state-success-primary); }
+.gwmb-dot-bad { background: var(--dsw-alias-state-error-primary); }
+.gwmb-approval-list { display: flex; flex-direction: column; }
+.gwmb-approval { display: flex; flex-direction: column; gap: 3px; padding: 9px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.gwmb-approval:last-child { border-bottom: none; }
+.gwmb-approval-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.gwmb-approval-tool { font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 12px; color: var(--dsw-alias-label-primary); }
 .gwmb-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 18px; }
 .gwmb-form-wide { grid-column: 1 / -1; }
 .gwmb-form-row { display: flex; flex-direction: column; gap: 5px; font-size: 13px; min-width: 0; }
 .gwmb-form-row > span:first-child { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 .gwmb-setting { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 8px 16px; align-items: center; }
+.gwmb-setting > .gwmb-select { justify-self: start; width: 160px; max-width: 100%; }
 .gwmb-setting-label { font-size: 13px; color: var(--dsw-alias-label-secondary); }
 .gwmb-input { box-sizing: border-box; width: 100%; font-size: 13px; font-family: inherit; padding: 6px 9px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .gwmb-input:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
@@ -296,6 +357,10 @@ const STYLE = `
 .gwmb-btn-primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
 .gwmb-btn-danger { background: var(--dsw-alias-state-error-primary); border-color: transparent; color: #fff; }
 .gwmb-btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+/* Destructive but secondary: a tinted red outline keeps 断开/拒绝 visible without
+   competing with the primary action. */
+.gwmb-btn-danger-soft { color: var(--dsw-alias-state-error-primary); border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 32%, transparent); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); }
+.gwmb-btn-danger-soft:hover:not(:disabled) { background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 16%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 44%, transparent); }
 .gwmb-tabs { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg, 16px); background: var(--dsw-alias-bg-layer-1); }
 .gwmb-tab { height: 28px; padding: 0 14px; border-radius: var(--dsw-radius-md, 10px); font-size: 13px; color: var(--dsw-alias-label-secondary); display: inline-flex; align-items: center; }
 .gwmb-tab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
@@ -312,6 +377,7 @@ const STYLE = `
 .gwmb-log:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .gwmb-link-field { padding: 10px 12px; gap: 6px; }
 .gwmb-modal { padding: 20px; gap: 14px; width: min(440px, 100%); }
+.gwmb-modal-wide { width: min(600px, 100%); }
 .gwmb-status { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; line-height: 18px; }
 .gwmb-status-ok { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent); }
 .gwmb-status-warn { color: var(--dsw-alias-state-warn-primary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); }
@@ -324,9 +390,6 @@ const STYLE = `
 .gwmb-info-head h3 { margin: 0; }
 .gwmb-form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; align-items: start; }
 @media (max-width: 720px) { .gwmb-form { grid-template-columns: minmax(0, 1fr); } }
-.gwmb-form-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-@media (max-width: 1180px) { .gwmb-form-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 720px) { .gwmb-form-4 { grid-template-columns: minmax(0, 1fr); } }
 .gwmb-form-row > span:first-child { font-size: 12px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
 .gwmb-form-row > .gwmb-meta { line-height: 1.5; }
 .gwmb-form-row > .gwmb-input, .gwmb-form-row > .gwmb-select, .gwmb-form-row > .gwmb-textarea { width: 100%; }
@@ -337,15 +400,21 @@ const STYLE = `
 .gwmb-row { gap: 10px; }
 .gwmb-note { line-height: 1.6; }
 .gwmb-switch-row { display: flex; align-items: center; gap: 10px; min-height: 32px; }
-.gwmb-switch { position: relative; width: 36px; height: 20px; flex: 0 0 auto; padding: 0; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
-.gwmb-switch-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--dsw-alias-label-tertiary); transition: transform .15s ease, background-color .15s ease; }
-.gwmb-switch-on { background: var(--dsw-alias-button-primary-fill); border-color: transparent; }
-.gwmb-switch-on .gwmb-switch-knob { transform: translateX(16px); background: var(--dsw-alias-label-primary-foreground); }
-.gwmb-switch:disabled { opacity: .45; cursor: default; }
-.gwmb-switch:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 2px; }
-.gwmb-radio-group { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; min-height: 32px; }
-.gwmb-radio { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--dsw-alias-label-primary); cursor: pointer; }
-.gwmb-radio input[type="radio"] { width: 15px; height: 15px; margin: 0; accent-color: var(--dsw-alias-button-primary-fill); cursor: pointer; }
+/* Mirrors the DSH settings switch geometry: 36x20 track, 2px inset padding,
+   16px thumb, border-radius 999px and corner-shape round. Only the checked
+   color differs (theme blue instead of the host brand fill). Geometry uses a
+   doubled class so host button rules cannot re-round or resize the track. */
+button.gwmb-switch.gwmb-switch { box-sizing: border-box; position: relative; display: inline-flex; align-items: center; flex: 0 0 auto; width: 36px; height: 20px; padding: 2px; border: 0; border-radius: 999px; corner-shape: round; cursor: pointer; }
+.gwmb-switch-knob { display: block; width: 16px; height: 16px; border-radius: 50%; corner-shape: round; background: var(--dsw-alias-switch-thumb); transition: transform .12s ease; }
+.gwmb-switch { background: var(--dsw-alias-border-l3); }
+.gwmb-switch:hover, .gwmb-switch:focus, .gwmb-switch:active { background: var(--dsw-alias-border-l3); }
+.gwmb-switch-on { background: var(--dsw-static-blue-600, #2563eb); }
+.gwmb-switch-on:hover, .gwmb-switch-on:focus, .gwmb-switch-on:active { background: var(--dsw-static-blue-600, #2563eb); }
+body[data-ds-dark-theme] .gwmb-switch-on, body[data-ds-dark-theme] .gwmb-switch-on:hover, body[data-ds-dark-theme] .gwmb-switch-on:focus, body[data-ds-dark-theme] .gwmb-switch-on:active { background: var(--dsw-static-deepseek-400, #7aaaff); }
+.gwmb-switch-on .gwmb-switch-knob { transform: translateX(16px); background: var(--dsw-static-neutral-bluish-00, #fff); }
+body[data-ds-dark-theme] .gwmb-switch-on .gwmb-switch-knob { background: var(--dsw-static-neutral-bluish-1000, #0f1115); }
+.gwmb-switch:disabled { cursor: default; opacity: .5; }
+.gwmb-switch:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, var(--dsw-alias-link))); outline-offset: 2px; }
 `
 
 // Insert the stylesheet while the module factory is materializing: the client
@@ -451,7 +520,13 @@ interface ConfirmState {
   action: () => void
 }
 
-function Modal(props: { title: string; children: ReactNode; actions: ReactNode; onClose: () => void }): ReactElement {
+function Modal(props: {
+  title: string
+  children: ReactNode
+  actions: ReactNode
+  onClose: () => void
+  wide?: boolean
+}): ReactElement {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') props.onClose()
@@ -463,7 +538,7 @@ function Modal(props: { title: string; children: ReactNode; actions: ReactNode; 
   return (
     <div className="gwmb-modal-mask" onClick={props.onClose}>
       <div
-        className="gwmb-modal"
+        className={`gwmb-modal ${props.wide === true ? 'gwmb-modal-wide' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={props.title}
@@ -547,7 +622,29 @@ function StopIcon(props: { size?: number }): ReactElement {
   )
 }
 
-function RefreshIcon(props: { size?: number }): ReactElement {
+function RefreshIcon(props: { size?: number; spinning?: boolean }): ReactElement {
+  return (
+    <svg
+      width={props.size ?? 16}
+      height={props.size ?? 16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      className={props.spinning === true ? 'gwmb-spin' : undefined}
+    >
+      <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+      <path d="M20 4.5V11h-6.5" />
+    </svg>
+  )
+}
+
+/** Two-arrow loop glyph for the auto-refresh toggle. */
+function AutoRefreshIcon(props: { size?: number }): ReactElement {
   return (
     <svg
       width={props.size ?? 16}
@@ -561,8 +658,10 @@ function RefreshIcon(props: { size?: number }): ReactElement {
       aria-hidden="true"
       focusable="false"
     >
-      <path d="M20 12a8 8 0 1 1-2.34-5.66" />
-      <path d="M20 4.5V11h-6.5" />
+      <path d="M4.5 9.5A8 8 0 0 1 18 6.5" />
+      <path d="M18 2.8v3.9h-3.9" />
+      <path d="M19.5 14.5A8 8 0 0 1 6 17.5" />
+      <path d="M6 21.2v-3.9h3.9" />
     </svg>
   )
 }
@@ -1021,7 +1120,7 @@ function PairingTab(): ReactElement {
           这些配置决定手机如何连上本机、登录状态保持多久，以及配对码能使用多长时间。
         </div>
         {settings ? (
-          <div className="gwmb-form gwmb-form-4">
+          <div className="gwmb-form">
             <div className="gwmb-form-row">
               <span>隧道开关</span>
               <div className="gwmb-switch-row">
@@ -1107,6 +1206,7 @@ function DevicesTab(): ReactElement {
   const [busy, setBusy] = useState('')
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
   const [renameTarget, setRenameTarget] = useState<{ device: DeviceView; value: string } | null>(null)
+  const [filter, setFilter] = useState<'all' | 'online' | 'inactive'>('all')
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -1205,6 +1305,34 @@ function DevicesTab(): ReactElement {
     })
   }
 
+  const runRevokeAll = async (): Promise<void> => {
+    setBusy('revoke-all')
+    setActionError('')
+    setMessage('')
+    try {
+      const payload = await apiPost<{ revoked: number; devices: DeviceView[] }>(
+        '/api/gateway-mobile/admin/devices/revoke-all',
+        { confirmText: 'REVOKE ALL' },
+      )
+      setDevices(payload.devices)
+      setMessage(`已撤销 ${payload.revoked} 台设备`)
+    } catch (cause) {
+      setActionError(messageOf(cause))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const revokeAll = (): void => {
+    setConfirmState({
+      title: '撤销全部设备',
+      message: '撤销所有尚未撤销的设备？包括本机在内，所有已配对设备都会立即失效，需要重新配对才能访问。',
+      confirmText: '全部撤销',
+      danger: true,
+      action: () => void runRevokeAll(),
+    })
+  }
+
   if (error) {
     return (
       <ErrorCard title="设备列表不可用">
@@ -1213,20 +1341,64 @@ function DevicesTab(): ReactElement {
     )
   }
 
+  const total = devices?.length ?? 0
+  const activeCount = (devices ?? []).filter((device) => !device.revoked && !device.expired).length
+  const filteredDevices = (devices ?? []).filter((device) => {
+    if (filter === 'online') return device.isOnline && !device.revoked && !device.expired
+    if (filter === 'inactive') return device.revoked || device.expired
+    return true
+  })
+
   return (
     <>
       <section className="gwmb-card">
         <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
-          <h3>已配对设备（{devices?.length ?? 0}）</h3>
-        <div className="gwmb-actions">
-          <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={busy !== ''} onClick={() => void purge()}>
-            {busy === 'purge' ? '清理中…' : '清理已撤销/过期'}
+          <h3>已配对设备（{total}）</h3>
+          <div className="gwmb-actions">
+            <button
+              className="gwmb-btn gwmb-btn-sm"
+              type="button"
+              disabled={busy !== '' || activeCount === 0}
+              onClick={() => void revokeAll()}
+            >
+              {busy === 'revoke-all' ? '撤销中…' : '撤销全部设备'}
+            </button>
+            <button
+              className="gwmb-btn gwmb-btn-sm"
+              type="button"
+              disabled={busy !== '' || total - activeCount === 0}
+              onClick={() => void purge()}
+            >
+              {busy === 'purge' ? '清理中…' : '清理已撤销/过期'}
+            </button>
+          </div>
+        </div>
+        <div className="gwmb-filter-bar">
+          <button
+            className={`gwmb-btn gwmb-btn-sm ${filter === 'all' ? 'gwmb-btn-primary' : ''}`}
+            type="button"
+            onClick={() => setFilter('all')}
+          >
+            全部（{total}）
+          </button>
+          <button
+            className={`gwmb-btn gwmb-btn-sm ${filter === 'online' ? 'gwmb-btn-primary' : ''}`}
+            type="button"
+            onClick={() => setFilter('online')}
+          >
+            在线（{(devices ?? []).filter((device) => device.isOnline && !device.revoked && !device.expired).length}）
+          </button>
+          <button
+            className={`gwmb-btn gwmb-btn-sm ${filter === 'inactive' ? 'gwmb-btn-primary' : ''}`}
+            type="button"
+            onClick={() => setFilter('inactive')}
+          >
+            已撤销/过期（{total - activeCount}）
           </button>
         </div>
-      </div>
-      <div className="gwmb-meta" style={{ marginBottom: 8 }}>
-        重命名、撤销与清理直接在这里操作；手机端设备页不显示这些按钮。
-      </div>
+        <div className="gwmb-meta" style={{ marginBottom: 8 }}>
+          重命名、撤销与清理直接在这里操作；手机端设备页不显示这些按钮。
+        </div>
       {message ? <div className="gwmb-meta gwmb-ok">{message}</div> : null}
       {actionError ? <div className="gwmb-meta gwmb-bad">{actionError}</div> : null}
       <div className="gwmb-table-wrap">
@@ -1242,7 +1414,14 @@ function DevicesTab(): ReactElement {
             </tr>
           </thead>
           <tbody>
-            {(devices ?? []).map((device) => {
+            {(devices ?? []).length > 0 && filteredDevices.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="gwmb-muted">
+                  当前筛选下没有设备。
+                </td>
+              </tr>
+            ) : null}
+            {filteredDevices.map((device) => {
               const tone = device.revoked || device.expired ? 'gwmb-status-bad' : device.isOnline ? 'gwmb-status-ok' : 'gwmb-status-warn'
               const state = device.revoked ? '已撤销' : device.expired ? '已过期' : device.isOnline ? '在线' : '离线'
               const name = device.displayName || device.deviceName
@@ -1256,6 +1435,11 @@ function DevicesTab(): ReactElement {
                     <div className="gwmb-device-ua" title={device.userAgent}>
                       {device.userAgent}
                     </div>
+                    {device.oauthBindings && device.oauthBindings.length > 0 ? (
+                      <div className="gwmb-device-ua">
+                        {device.oauthBindings.map((binding) => `${binding.provider}: @${binding.username}`).join(' · ')}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="gwmb-nowrap">
                     <span className={`gwmb-status ${tone}`}>{state}</span>
@@ -1514,18 +1698,255 @@ function DateRangePicker(props: {
     </div>
   )
 }
+const HEALTH_LABELS: Record<string, string> = {
+  gateway: '网关',
+  storage: '存储',
+  'dsh-upstream': 'DSH 上游',
+  tunnel: '公网隧道',
+  weixin: '微信 Bot',
+  capabilities: '能力矩阵',
+}
+
+function healthStateText(check: HealthCheckView): string {
+  if (check.optional === true && check.detail === 'disabled') return '未启用'
+  return check.ok ? '正常' : '异常'
+}
+
+function saveJsonFile(filename: string, payload: unknown): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+function HelpTab(props: { ping: PingView | null }): ReactElement {
+  const { ping } = props
+  const tunnel = ping?.tunnel
+  const [health, setHealth] = useState<HealthView | null>(null)
+  const [healthError, setHealthError] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [latency, setLatency] = useState<number | null>(null)
+  const [notice, setNotice] = useState('')
+
+  const runChecks = useCallback(async (): Promise<void> => {
+    setChecking(true)
+    setNotice('')
+    setHealthError('')
+    const started = performance.now()
+    try {
+      const payload = await apiGet<HealthView>('/api/gateway-mobile/read/health')
+      setHealth(payload)
+      setLatency(Math.max(1, Math.round(performance.now() - started)))
+    } catch (cause) {
+      setHealth(null)
+      setHealthError(messageOf(cause))
+    } finally {
+      setChecking(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void runChecks()
+  }, [runChecks])
+
+  const checks = health?.checks ?? []
+  const failed = checks.filter((check) => !check.ok && !(check.optional === true && check.detail === 'disabled'))
+  const healthy = health !== null && health.ok && failed.length === 0
+  const overview: Array<[string, string]> = [
+    ['网关地址', ping ? `127.0.0.1:${ping.gateway.port}` : '—'],
+    ['运行时长', formatUptime(health?.uptime ?? ping?.gateway.uptime ?? 0)],
+    ['服务器时间', health?.serverTime ?? ping?.serverTime ?? '—'],
+    ['隧道状态', tunnel ? `${tunnel.state} · ${tunnel.mode} · ${tunnel.protocol}` : '—'],
+    ['公网地址', tunnel?.publicBase || '隧道未连接'],
+    ['本机往返延迟', latency === null ? '—' : `${latency} ms`],
+    ['浏览器安全上下文', window.isSecureContext ? '是' : '否'],
+  ]
+  const capabilityRows: Array<[string, string, boolean]> = [
+    ['DSH 控制器', '会话 / 审批 / 提问接口', ping?.capabilities.controller === true],
+    ['工作区注册', '多工作区会话与状态', ping?.capabilities.workspaceRegistry === true],
+    ['用户提问', 'ask_user_question 桥接', ping?.capabilities.userQuestions === true],
+    ['微信通道', 'ClawBot / iLink 消息桥', ping?.capabilities.weixin === true],
+    ['公网隧道', 'Quick / Named Tunnel', ping?.capabilities.tunnel?.enabled === true],
+  ]
+  const faq: Array<[string, string]> = [
+    ['手机打不开工作台？', '先看概览里的隧道状态；地址变化后旧链接会失效，需要重新配对。隧道未连接时手机无法访问。'],
+    ['扫码后提示配对码无效或过期？', '配对码有有效期，过期后请在「配对」页重新生成，再让手机扫描新的二维码。'],
+    ['微信收不到审批或完成通知？', '确认「微信」页签已连接、通知设置里通道与完成通知均已开启，并检查频率限制是否把消息合并了。'],
+    ['独立管理台打不开？', '可能是兼容模式被关闭；在「设置 → 独立管理台」重新启用即可，回环 API 不受影响。'],
+    ['如何彻底停用远程访问？', '在「配对」页关闭隧道开关，并在「设备」页撤销全部设备，手机端将立即失效。'],
+  ]
+
+  const diagnosticsPayload = (): unknown => ({
+    generatedAt: new Date().toISOString(),
+    health,
+    ping,
+    latencyMs: latency,
+    browser: { userAgent: navigator.userAgent, secureContext: window.isSecureContext },
+  })
+
+  const copyDiagnostics = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(diagnosticsPayload(), null, 2))
+      setNotice('诊断信息已复制到剪贴板')
+    } catch {
+      setNotice('浏览器不允许写剪贴板，请改用「下载 JSON」')
+    }
+  }
+
+  const downloadDiagnostics = (): void => {
+    saveJsonFile(
+      `gateway-mobile-diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+      diagnosticsPayload(),
+    )
+    setNotice('诊断 JSON 已下载')
+  }
+
+  return (
+    <>
+      <section className="gwmb-card">
+        <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
+          <h3>诊断信息</h3>
+          <span
+            className={`gwmb-status ${healthError ? 'gwmb-status-bad' : healthy ? 'gwmb-status-ok' : 'gwmb-status-warn'}`}
+          >
+            {checking ? '检查中…' : healthError ? '不可用' : healthy ? '全部正常' : '存在异常'}
+          </span>
+        </div>
+        <dl className="gwmb-kv">
+          {overview.map(([label, value]) => (
+            <Fragment key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </Fragment>
+          ))}
+        </dl>
+        <div className="gwmb-actions">
+          <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={checking} onClick={() => void runChecks()}>
+            {checking ? '检查中…' : '重新检查'}
+          </button>
+          <button className="gwmb-btn gwmb-btn-sm" type="button" onClick={() => void copyDiagnostics()}>
+            复制诊断
+          </button>
+          <button className="gwmb-btn gwmb-btn-sm" type="button" onClick={downloadDiagnostics}>
+            下载 JSON
+          </button>
+        </div>
+        {healthError ? <div className="gwmb-meta gwmb-bad">深度健康检查不可用：{healthError}</div> : null}
+        {notice ? <div className="gwmb-meta gwmb-ok">{notice}</div> : null}
+      </section>
+
+      <section className="gwmb-card">
+        <h3>深度健康检查</h3>
+        {health === null && !healthError ? <div className="gwmb-meta">正在检查…</div> : null}
+        {health !== null && checks.length === 0 ? <div className="gwmb-meta">网关未返回检查项。</div> : null}
+        <div className="gwmb-check-list">
+          {checks.map((check) => (
+            <div className="gwmb-check-row" key={check.name}>
+              <span className={`gwmb-dot ${check.ok ? 'gwmb-dot-ok' : 'gwmb-dot-bad'}`} />
+              <span className="gwmb-check-name">
+                <span>{HEALTH_LABELS[check.name] ?? check.name}</span>
+                {check.detail ? (
+                  <span className="gwmb-check-detail" title={check.detail}>
+                    {check.detail}
+                  </span>
+                ) : null}
+              </span>
+              <span className="gwmb-check-state">{healthStateText(check)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="gwmb-card">
+        <h3>能力矩阵</h3>
+        <div className="gwmb-check-list">
+          {capabilityRows.map(([name, hint, available]) => (
+            <div className="gwmb-check-row" key={name}>
+              <span className={`gwmb-dot ${available ? 'gwmb-dot-ok' : 'gwmb-dot-bad'}`} />
+              <span className="gwmb-check-name">
+                <span>{name}</span>
+                <span className="gwmb-check-detail">{hint}</span>
+              </span>
+              <span className="gwmb-check-state">{available ? '可用' : '不可用'}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="gwmb-card">
+        <h3>手机端连通性</h3>
+        <div className="gwmb-meta gwmb-muted">
+          这里检查的是 DSH 本机回环；手机经公网隧道访问时，可用手机浏览器打开独立诊断页做 HTTP / WebSocket
+          自检（需要本机兼容模式开启）。
+        </div>
+        {ping?.gateway.adminConsoleEnabled !== false ? (
+          <div className="gwmb-actions">
+            <a
+              className="gwmb-btn"
+              href={`${ping ? ping.gateway.adminUrl.replace(/\/admin\/?$/, '/diag') : '#'}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              打开独立诊断页
+            </a>
+          </div>
+        ) : (
+          <div className="gwmb-meta gwmb-muted">兼容模式已关闭；重新启用后可打开独立诊断页。</div>
+        )}
+      </section>
+
+      <section className="gwmb-card">
+        <h3>常见问题</h3>
+        {faq.map(([question, answer]) => (
+          <div className="gwmb-faq" key={question}>
+            <div className="gwmb-faq-q">{question}</div>
+            <div className="gwmb-meta gwmb-muted">{answer}</div>
+          </div>
+        ))}
+      </section>
+    </>
+  )
+}
+
+const APPROVAL_LABELS: Record<string, string> = {
+  pending: '待处理',
+  allowed: '已允许',
+  rejected: '已拒绝',
+  timeout: '超时',
+  cancelled: '已取消',
+  unavailable: '不可用',
+}
+
+const APPROVAL_TONES: Record<string, string> = {
+  allowed: 'gwmb-status-ok',
+  rejected: 'gwmb-status-bad',
+  pending: 'gwmb-status-warn',
+  timeout: 'gwmb-status-warn',
+  cancelled: 'gwmb-status-warn',
+  unavailable: 'gwmb-status-warn',
+}
+
 function LogsTab(): ReactElement {
   const [view, setView] = useState<'runtime' | 'weixin'>('runtime')
   const [logs, setLogs] = useState<LogItem[] | null>(null)
   const [level, setLevel] = useState('all')
+  const [query, setQuery] = useState('')
+  const [auto, setAuto] = useState(true)
   const [error, setError] = useState('')
-  const [approvals, setApprovals] = useState<unknown[] | null>(null)
+  const [approvals, setApprovals] = useState<ApprovalItem[] | null>(null)
   const [approvalsError, setApprovalsError] = useState('')
+  const [approvalsBusy, setApprovalsBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportRange, setExportRange] = useState<'24h' | '7d' | '30d' | '90d' | 'custom' | 'all'>('24h')
   const [customRange, setCustomRange] = useState<DateRangeValue | null>(null)
   const [exportMessage, setExportMessage] = useState('')
   const [exportError, setExportError] = useState('')
+  const [exportOpen, setExportOpen] = useState(false)
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -1539,7 +1960,7 @@ function LogsTab(): ReactElement {
 
   const loadApprovals = useCallback(async (): Promise<void> => {
     try {
-      const payload = await apiGet<{ items: unknown[] }>('/api/gateway-mobile/read/weixin/approvals')
+      const payload = await apiGet<{ items: ApprovalItem[] }>('/api/gateway-mobile/read/weixin/approvals')
       setApprovals(payload.items)
       setApprovalsError('')
     } catch (cause) {
@@ -1548,11 +1969,24 @@ function LogsTab(): ReactElement {
   }, [])
 
   useEffect(() => {
-    void load()
     void loadApprovals()
+  }, [loadApprovals])
+
+  const refreshApprovals = async (): Promise<void> => {
+    setApprovalsBusy(true)
+    try {
+      await loadApprovals()
+    } finally {
+      setApprovalsBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+    if (!auto) return undefined
     const timer = window.setInterval(() => void load(), 5000)
     return () => window.clearInterval(timer)
-  }, [load, loadApprovals])
+  }, [load, auto])
 
   const exportAudit = async (): Promise<void> => {
     setExporting(true)
@@ -1617,69 +2051,87 @@ function LogsTab(): ReactElement {
   }
 
   const levels = ['all', 'error', 'warn', 'info', 'debug']
-  const visible = (logs ?? []).filter((item) => level === 'all' || item.level === level)
+  const keyword = query.trim().toLowerCase()
+  const filtered = (logs ?? []).filter((item) => {
+    if (level !== 'all' && item.level !== level) return false
+    if (keyword === '') return true
+    return item.message.toLowerCase().includes(keyword)
+  })
+  const newestFirst = [...filtered].sort((left, right) => {
+    const a = Date.parse(left.timestamp)
+    const b = Date.parse(right.timestamp)
+    if (Number.isNaN(a) || Number.isNaN(b)) return 0
+    return b - a
+  })
 
   return (
-    <section className="gwmb-card">
-      <div className="gwmb-row" style={{ justifyContent: 'space-between' }}>
-        <h3>日志</h3>
-        <div className="gwmb-actions">
-          <button
-            className={`gwmb-btn gwmb-btn-sm ${view === 'runtime' ? 'gwmb-btn-primary' : ''}`}
-            type="button"
-            onClick={() => setView('runtime')}
-          >
-            运行日志
-          </button>
-          <button
-            className={`gwmb-btn gwmb-btn-sm ${view === 'weixin' ? 'gwmb-btn-primary' : ''}`}
-            type="button"
-            onClick={() => setView('weixin')}
-          >
-            微信审批历史（{approvals?.length ?? 0}）
-          </button>
-          <select
-            className="gwmb-select gwmb-select-sm"
-            value={exportRange}
-            disabled={exporting}
-            aria-label="审计导出范围"
-            onChange={(event) => setExportRange(event.target.value as '24h' | '7d' | 'all')}
-          >
-            <option value="24h">最近 24 小时</option>
-            <option value="7d">最近 7 天</option>
-            <option value="30d">最近 30 天</option>
-            <option value="90d">最近 90 天</option>
-            <option value="custom">自定义时间段</option>
-            <option value="all">全部（最多 500 条）</option>
-          </select>
-          <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={exporting} onClick={() => void exportAudit()}>
-            {exporting ? '导出中…' : '导出审计日志'}
-          </button>
-        </div>
-      </div>
-
-      {exportRange === 'custom' ? (
-        <div className="gwmb-row">
-          <DateRangePicker value={customRange} onChange={setCustomRange} />
-        </div>
-      ) : null}
-
-      {exportMessage ? <div className="gwmb-meta gwmb-ok">{exportMessage}</div> : null}
-      {exportError ? <div className="gwmb-meta gwmb-bad">{exportError}</div> : null}
-
-      {view === 'runtime' ? (
-        <>
-          <div className="gwmb-row" style={{ justifyContent: 'flex-end' }}>
-            <select className="gwmb-select" value={level} onChange={(event) => setLevel(event.target.value)}>
-              {levels.map((item) => (
-                <option key={item} value={item}>
-                  {item === 'all' ? '全部级别' : item}
-                </option>
-              ))}
-            </select>
+    <>
+      <section className="gwmb-card">
+        <div className="gwmb-toolbar">
+          <h3>日志</h3>
+          {view === 'runtime' ? (
+            <>
+              <input
+                className="gwmb-input gwmb-search"
+                type="search"
+                value={query}
+                placeholder="搜索日志内容"
+                aria-label="搜索日志内容"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <select
+                className="gwmb-select gwmb-select-sm"
+                aria-label="日志级别"
+                value={level}
+                onChange={(event) => setLevel(event.target.value)}
+              >
+                {levels.map((item) => (
+                  <option key={item} value={item}>
+                    {item === 'all' ? '全部级别' : item}
+                  </option>
+                ))}
+              </select>
+              <span className="gwmb-meta gwmb-muted gwmb-nowrap">
+                {newestFirst.length === (logs?.length ?? 0)
+                  ? `共 ${logs?.length ?? 0} 条`
+                  : `共 ${logs?.length ?? 0} 条 · 显示 ${newestFirst.length} 条`}
+              </span>
+            </>
+          ) : null}
+          <div className="gwmb-actions gwmb-toolbar-end">
+            <button
+              className={`gwmb-btn gwmb-btn-sm ${view === 'runtime' ? 'gwmb-btn-primary' : ''}`}
+              type="button"
+              onClick={() => setView('runtime')}
+            >
+              运行日志
+            </button>
+            <button
+              className={`gwmb-btn gwmb-btn-sm ${view === 'weixin' ? 'gwmb-btn-primary' : ''}`}
+              type="button"
+              onClick={() => setView('weixin')}
+            >
+              微信审批历史（{approvals?.length ?? 0}）
+            </button>
+            <button className="gwmb-btn gwmb-btn-sm" type="button" onClick={() => setExportOpen(true)}>
+              导出审计
+            </button>
+            <button
+              className={`gwmb-btn gwmb-btn-icon ${auto ? 'gwmb-btn-icon-on' : ''}`}
+              type="button"
+              onClick={() => setAuto(!auto)}
+              title={auto ? '自动刷新：已开启' : '自动刷新：已关闭'}
+              aria-label="自动刷新"
+              aria-pressed={auto}
+            >
+              <AutoRefreshIcon />
+            </button>
           </div>
+        </div>
+
+        {view === 'runtime' ? (
           <div className="gwmb-log-list">
-            {visible.map((item, index) => (
+            {newestFirst.map((item, index) => (
               <div className="gwmb-log" key={`${item.timestamp}-${index}`}>
                 <span className="gwmb-log-time">{formatTime(item.timestamp)}</span>
                 <span className={item.level === 'error' ? 'gwmb-bad' : item.level === 'warn' ? 'gwmb-warn' : 'gwmb-muted'}>
@@ -1688,29 +2140,101 @@ function LogsTab(): ReactElement {
                 <span className="gwmb-log-msg">{item.message}</span>
               </div>
             ))}
-            {logs !== null && visible.length === 0 ? <div className="gwmb-meta">暂无日志。</div> : null}
+            {logs !== null && newestFirst.length === 0 ? (
+              <div className="gwmb-meta">{keyword ? '没有匹配的日志。' : '暂无日志。'}</div>
+            ) : null}
             {logs === null ? <div className="gwmb-meta">正在读取日志…</div> : null}
           </div>
-        </>
-      ) : (
-        <>
-          <div className="gwmb-row" style={{ justifyContent: 'flex-end' }}>
-            <button className="gwmb-btn gwmb-btn-sm" type="button" onClick={() => void loadApprovals()}>
-              刷新
-            </button>
+        ) : (
+          <>
+            <div className="gwmb-row" style={{ justifyContent: 'flex-end' }}>
+              <button
+                className="gwmb-btn gwmb-btn-sm"
+                type="button"
+                disabled={approvalsBusy}
+                onClick={() => void refreshApprovals()}
+              >
+                {approvalsBusy ? '刷新中…' : '刷新'}
+              </button>
+            </div>
+            {approvalsError ? <div className="gwmb-meta gwmb-bad">{approvalsError}</div> : null}
+            {approvals === null ? <div className="gwmb-meta">正在读取审批历史…</div> : null}
+            {approvals !== null && approvals.length === 0 ? <div className="gwmb-meta">暂无审批记录</div> : null}
+            <div className="gwmb-approval-list">
+              {(approvals ?? []).map((item, index) => (
+                <div className="gwmb-approval" key={`${item.id}-${index}`}>
+                  <div className="gwmb-approval-head">
+                    <span className="gwmb-meta gwmb-muted">
+                      {Number.isFinite(item.at) ? new Date(item.at).toLocaleString() : '—'}
+                    </span>
+                    <span className={`gwmb-status ${APPROVAL_TONES[item.status] ?? 'gwmb-status-warn'}`}>
+                      {APPROVAL_LABELS[item.status] ?? item.status}
+                    </span>
+                    <span className="gwmb-approval-tool">{item.toolName || '—'}</span>
+                    <span className="gwmb-meta gwmb-muted">
+                      {item.sessionId ? item.sessionId.slice(0, 8) : ''}
+                    </span>
+                  </div>
+                  {item.reason ? <div className="gwmb-meta gwmb-muted">{item.reason}</div> : null}
+                </div>
+              ))}
+            </div>
+            <div className="gwmb-meta gwmb-muted">审批历史与微信审批、提问、计划审核相关；手机端不显示。</div>
+          </>
+        )}
+      </section>
+
+      {exportOpen ? (
+        <Modal
+          title="导出审计日志"
+          wide={exportRange === 'custom'}
+          onClose={() => setExportOpen(false)}
+          actions={
+            <>
+              <button className="gwmb-btn" type="button" onClick={() => setExportOpen(false)}>
+                关闭
+              </button>
+              <button
+                className="gwmb-btn gwmb-btn-primary"
+                type="button"
+                disabled={exporting}
+                onClick={() => void exportAudit()}
+              >
+                {exporting ? '导出中…' : '导出审计日志'}
+              </button>
+            </>
+          }
+        >
+          <div className="gwmb-row">
+            <span className="gwmb-setting-label">导出范围</span>
+            <select
+              className="gwmb-select"
+              value={exportRange}
+              disabled={exporting}
+              aria-label="审计导出范围"
+              onChange={(event) => {
+                setExportRange(event.target.value as '24h' | '7d' | '30d' | '90d' | 'custom' | 'all')
+                setExportMessage('')
+                setExportError('')
+              }}
+            >
+              <option value="24h">最近 24 小时</option>
+              <option value="7d">最近 7 天</option>
+              <option value="30d">最近 30 天</option>
+              <option value="90d">最近 90 天</option>
+              <option value="custom">自定义时间段</option>
+              <option value="all">全部（最多 500 条）</option>
+            </select>
           </div>
-          {approvalsError ? <div className="gwmb-meta gwmb-bad">{approvalsError}</div> : null}
-          <div className="gwmb-code" style={{ maxHeight: 420, overflowY: 'auto' }}>
-            {approvals === null
-              ? '正在读取审批历史…'
-              : approvals.length === 0
-                ? '暂无审批记录'
-                : approvals.map((item, index) => <div key={index}>{JSON.stringify(item)}</div>)}
+          {exportRange === 'custom' ? <DateRangePicker value={customRange} onChange={setCustomRange} /> : null}
+          <div className="gwmb-meta gwmb-muted">
+            导出为 JSON 文件，包含所选时间范围内的审计记录；自定义范围在日历里拖选起始/结束日期。
           </div>
-          <div className="gwmb-meta gwmb-muted">审批历史与微信审批、提问、计划审核相关；手机端不显示。</div>
-        </>
-      )}
-    </section>
+          {exportMessage ? <div className="gwmb-meta gwmb-ok">{exportMessage}</div> : null}
+          {exportError ? <div className="gwmb-meta gwmb-bad">{exportError}</div> : null}
+        </Modal>
+      ) : null}
+    </>
   )
 }
 
@@ -1738,6 +2262,19 @@ function WeixinTab(): ReactElement {
   useEffect(() => {
     void load()
   }, [load])
+
+  // 页签切走会卸载组件、丢掉本地扫码状态；回到微信页时向网关恢复进行中的
+  // 扫码会话（等待扫码 / 已扫码 / 待本机确认），二维码和允许/拒绝按钮随之复原。
+  useEffect(() => {
+    void (async () => {
+      try {
+        const session = await apiGet<WeixinLoginView>('/api/gateway-mobile/admin/weixin/login')
+        if (session.qrSvg && ['wait', 'scaned', 'pending'].includes(session.state)) setLogin(session)
+      } catch {
+        // 没有进行中的扫码会话：保持当前页面即可
+      }
+    })()
+  }, [])
 
   const loginState = login?.state ?? ''
   useEffect(() => {
@@ -1817,6 +2354,34 @@ function WeixinTab(): ReactElement {
     })
   }
 
+  const doRebind = async (): Promise<void> => {
+    setBusy(true)
+    setError('')
+    try {
+      // 换绑 = 断开当前凭证，再请求一张新的登录二维码。
+      await apiPost('/api/gateway-mobile/admin/weixin/logout')
+      const next = await apiPost<WeixinLoginView>('/api/gateway-mobile/admin/weixin/login')
+      setLogin(next)
+      setMessage('请用新的微信扫码，并在本机点「允许连接」')
+      await load()
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const rebind = (): void => {
+    setConfirmState({
+      title: '换绑微信',
+      message:
+        '换绑会断开当前微信，并重置微信专用的 DSH 会话。旧微信号之后不会再收到 DSH 回复；新号扫码确认后会自动连接。',
+      confirmText: '继续换绑',
+      danger: true,
+      action: () => void doRebind(),
+    })
+  }
+
   const save = async (): Promise<void> => {
     if (!form) return
     setSaving(true)
@@ -1857,9 +2422,14 @@ function WeixinTab(): ReactElement {
           <h3>微信连接</h3>
           <div className="gwmb-actions">
             {status.weixin?.connected ? (
-              <button className="gwmb-btn" type="button" disabled={busy} onClick={logout}>
-                退出登录
-              </button>
+              <div className="gwmb-actions">
+                <button className="gwmb-btn" type="button" disabled={busy} onClick={rebind}>
+                  换绑微信
+                </button>
+                <button className="gwmb-btn gwmb-btn-danger-soft" type="button" disabled={busy} onClick={logout}>
+                  断开微信
+                </button>
+              </div>
             ) : (
               <button
                 className="gwmb-btn gwmb-btn-primary"
@@ -2286,28 +2856,16 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
         <h3>独立管理台</h3>
         <div className="gwmb-form-row">
           <span>兼容模式</span>
-          <div className="gwmb-radio-group">
-            <label className="gwmb-radio">
-              <input
-                type="radio"
-                name="adminConsoleEnabled"
-                checked={form.adminConsoleEnabled}
-                onChange={() => update('adminConsoleEnabled', true)}
-              />
-              启用（本机可打开 /mobile/admin）
-            </label>
-            <label className="gwmb-radio">
-              <input
-                type="radio"
-                name="adminConsoleEnabled"
-                checked={!form.adminConsoleEnabled}
-                onChange={() => update('adminConsoleEnabled', false)}
-              />
-              禁用（只用工作台）
-            </label>
+          <div className="gwmb-switch-row">
+            <Toggle
+              checked={form.adminConsoleEnabled}
+              label="兼容模式"
+              onChange={(value) => update('adminConsoleEnabled', value)}
+            />
+            <span className="gwmb-meta">{form.adminConsoleEnabled ? '已启用' : '已禁用'}</span>
           </div>
           <span className="gwmb-meta gwmb-muted">
-            禁用后独立页面与 /admin 跳转返回 404，回环 API 仍保留；工作台成为唯一管理入口。
+            启用后本机可打开 /mobile/admin 独立管理台；禁用后独立页面与 /admin 跳转返回 404，回环 API 仍保留，工作台成为唯一管理入口。
           </span>
         </div>
       </section>
@@ -2345,6 +2903,7 @@ function WorkbenchPage(): ReactElement {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshedAt, setRefreshedAt] = useState('')
+  const [refreshNotice, setRefreshNotice] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async (options?: { silent?: boolean }): Promise<void> => {
@@ -2361,6 +2920,25 @@ function WorkbenchPage(): ReactElement {
       if (!silent) setLoading(false)
     }
   }, [])
+
+  // Manual refresh: keep the spinner visible long enough to register, then
+  // confirm the result in the header so a fast round-trip still feels handled.
+  const refresh = useCallback(async (): Promise<void> => {
+    setLoading(true)
+    setRefreshNotice('')
+    const started = performance.now()
+    await load({ silent: true })
+    const elapsed = performance.now() - started
+    if (elapsed < 400) await new Promise((resolve) => window.setTimeout(resolve, 400 - elapsed))
+    setLoading(false)
+    setRefreshNotice('已刷新')
+  }, [load])
+
+  useEffect(() => {
+    if (refreshNotice === '') return undefined
+    const timer = window.setTimeout(() => setRefreshNotice(''), 1600)
+    return () => window.clearTimeout(timer)
+  }, [refreshNotice])
 
   useEffect(() => {
     void load()
@@ -2396,6 +2974,7 @@ function WorkbenchPage(): ReactElement {
           { id: 'devices' as Tab, label: '设备' },
           { id: 'logs' as Tab, label: '日志' },
           { id: 'settings' as Tab, label: '设置' },
+          { id: 'help' as Tab, label: '帮助' },
         ]
       : []),
   ]
@@ -2416,8 +2995,20 @@ function WorkbenchPage(): ReactElement {
         </div>
         <div className="gwmb-grow" />
         <div className="gwmb-actions">
-          <button className="gwmb-btn" type="button" onClick={() => void load()} disabled={loading}>
-            {loading ? '刷新中…' : '刷新'}
+          {refreshNotice ? (
+            <span className="gwmb-meta gwmb-ok gwmb-refresh-note" role="status">
+              {refreshNotice}
+            </span>
+          ) : null}
+          <button
+            className="gwmb-btn gwmb-btn-icon"
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading}
+            title="刷新"
+            aria-label="刷新"
+          >
+            <RefreshIcon spinning={loading} />
           </button>
           {loopback && adminUrl && ping?.gateway.adminConsoleEnabled !== false ? (
             <a className="gwmb-btn" href={adminUrl} target="_blank" rel="noreferrer">
@@ -2475,6 +3066,7 @@ function WorkbenchPage(): ReactElement {
         {tab === 'devices' && local ? <DevicesTab /> : null}
         {tab === 'logs' && local ? <LogsTab /> : null}
         {tab === 'settings' && local ? <SettingsTab pluginVersion={ping?.version ?? ''} /> : null}
+        {tab === 'help' && local ? <HelpTab ping={ping} /> : null}
       </div>
     </div>
   )

@@ -2,7 +2,7 @@
 
 [English](./CHANGELOG.md) | [中文](./CHANGELOG.zh.md)
 
-## 0.2.0-next.0 - 2026-11-10
+## 0.2.0 - 2026-11-11
 
 Workbench preview: the gateway console becomes a page inside the DSH Web UI.
 
@@ -11,8 +11,8 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
   a left-sidebar entry, mirroring the official Plugins/Schedules pages.
 - Adds host bridge routes on the DSH Connection service (`ctx.connection.fetch.register`): `read/ping`
   for both desktop and paired phones, plus local-only `read/pairing`, `read/devices`, `read/logs`,
-  `read/settings` and `POST admin/pairing/regenerate`. Same-origin, authenticated by DSH's browser
-  session, and no loopback HTTP hop back into the gateway.
+  `read/health`, `read/settings` and `POST admin/pairing/regenerate`. Same-origin, authenticated by DSH's
+  browser session, and no loopback HTTP hop back into the gateway.
 - The gateway now marks every forwarded request with `x-dsh-gateway-proxied` (stripping caller-supplied
   copies) and refuses the workbench local-only prefixes before proxying, so a paired phone cannot reach
   pairing codes, device lists, logs, settings or management actions even though it opens the same UI.
@@ -32,10 +32,17 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
 - WeChat QR login, pending-connection approval, logout and approval history are now available in the
   workbench (local-only `admin/weixin/login` GET/POST, `admin/weixin/approve`, `admin/weixin/logout`,
   `read/weixin/approvals`). The standalone console remains as a compatibility fallback.
-- The workbench now covers the admin-console maintenance flows; the standalone page can be retired
-  after the remaining device rename/revoke actions move over.
-- Device rename, revoke, permanent delete and purge are available in the 设备 tab (local-only
-  `admin/devices/rename|revoke|delete|purge`).
+- The workbench now matches the standalone console for devices and logs, so the standalone page is a
+  fallback rather than a requirement.
+- Device tab: filters (全部 / 在线 / 已撤销过期), rename, revoke, revoke-all, permanent delete and purge
+  (local-only `admin/devices/rename|revoke|delete|purge|revoke-all`), with OAuth bindings shown per device.
+- Logs tab: keyword search, an explicit count (`共 N 条 · 显示 M 条`), newest-first ordering and an
+  auto-refresh switch, all sharing one header toolbar row so the list keeps the height; WeChat approval
+  history renders as structured entries instead of raw JSON, and audit export moved behind an 导出审计
+  toolbar button with its range picker in a dialog.
+- Help tab now carries the diagnostics instead of sending you to the standalone console: deep health
+  checks (`read/health`), the capability matrix, a loopback latency probe, and copy/download of a
+  diagnostics JSON bundle. The standalone `/diag` page remains for phone-side HTTP/WebSocket self-tests.
 - Compatibility switch: 设置 → 安全与维护 → 独立管理台 can disable the standalone page (it then
   answers 404 while loopback APIs stay available). The header link hides when disabled.
 - The workbench is renamed from “手机网关” to “移动端网关” (page title, sidebar entry
@@ -45,7 +52,7 @@ Workbench preview: the gateway console becomes a page inside the DSH Web UI.
   (a device paired after `urlChangedAt`), and the banner can be dismissed per change (localStorage).
 - Layout follows the DSH main-panel page contract: header and tabs stay frozen, only the tab content
   scrolls, and tables/logs keep one-line cells where they must not wrap.
-- Version bumped to `0.2.0-next.0` for the npm `next` dist-tag; `engines.dsh` stays pinned to `0.2.2-rc.1`.
+- Version is `0.2.0` (the former `next` preview was promoted to stable); `engines.dsh` stays pinned to `0.2.2-rc.1`.
 - Activation needs one `dsh web` restart after `npm run build` (DSH caches client bundle manifests until restart).
 
 ## 0.1.4 - 2026-11-09

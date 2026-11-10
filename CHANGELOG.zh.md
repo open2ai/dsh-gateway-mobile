@@ -2,7 +2,7 @@
 
 [English](./CHANGELOG.md) | [中文](./CHANGELOG.zh.md)
 
-## 0.2.0-next.0 - 2026-11-10
+## 0.2.0 - 2026-11-11
 
 工作台预览版：管理台能力开始进入 DSH Web UI。
 
@@ -10,7 +10,7 @@
   `scripts/build-client.mjs` 构建；注册整页 `main` 面板 `gateway-mobile-workbench` 和左侧栏入口，
   与官方 Plugins/Schedules 页同构。
 - 在 DSH Connection 服务上注册宿主桥路由（`ctx.connection.fetch.register`）：`read/ping`（桌面与手机
-  均可用），以及仅本机的 `read/pairing`、`read/devices`、`read/logs`、`read/settings` 和
+  均可用），以及仅本机的 `read/pairing`、`read/devices`、`read/logs`、`read/health`、`read/settings` 和
   `POST admin/pairing/regenerate`。同源、使用 DSH 浏览器会话认证，不再回环 HTTP 跳回网关。
 - 网关给所有转发请求注入 `x-dsh-gateway-proxied`（并剥离调用方伪造的同名头），在代理前就拒绝工作台
   本地专属前缀，因此手机即使打开同一 UI 也拿不到配对码、设备、日志、设置或管理操作；DSH 桥再按同一
@@ -27,15 +27,21 @@
   全部接口仍仅限本机。
 - 微信扫码登录、pending 连接审批、退出登录与审批历史迁移到工作台（仅本机接口 `admin/weixin/login`
   GET/POST、`admin/weixin/approve`、`admin/weixin/logout`、`read/weixin/approvals`）。独立管理台保留为兼容入口。
-- 工作台已覆盖管理台的维护流程；剩余设备重命名/撤销迁移过去后，独立管理页即可退役。
-- 设备页支持重命名、撤销、永久删除与清理（仅本机接口 `admin/devices/rename|revoke|delete|purge`）。
+- 工作台在设备与日志上与独立管理台对齐，独立管理页降级为兼容兜底而非必需入口。
+- 设备页：筛选（全部 / 在线 / 已撤销过期）、重命名、撤销、全部撤销、永久删除与清理（仅本机接口
+  `admin/devices/rename|revoke|delete|purge|revoke-all`），并显示每台设备的 OAuth 绑定。
+- 日志页：关键字搜索、明确的条数（`共 N 条 · 显示 M 条`）、最新在前排序与自动刷新开关，全部收进标题工具栏
+  一行，把高度留给日志列表；微信审批历史改为结构化条目而不是原始 JSON；审计导出收进工具栏的「导出审计」
+  按钮，时间范围在弹窗里选择。
+- 帮助页接管诊断：深度健康检查（`read/health`）、能力矩阵、本机回环延迟，以及诊断 JSON 的复制/下载，
+  不再必须打开独立管理台；独立 `/diag` 页保留给手机端 HTTP/WebSocket 自检。
 - 兼容开关：设置 → 安全与维护 → 独立管理台可关闭独立页面（关闭后页面返回 404，回环 API 仍可用），
   页头「打开独立管理台」链接同时隐藏。
 - 工作台名称从「手机网关」改为「移动端网关」，页面标题、侧栏入口与文档同步。
 - 配对页的「隧道地址已变化」横幅现在会自动消失：宿主返回 `repairedSinceChange`（地址变化后有新设备
   配对成功），并且支持按本次变化手动关闭（localStorage 记录）。
 - 布局遵循 DSH 主面板页面契约：标题与页签固定，只有页签内容滚动；表格与日志按需保持单行。
-- 版本号升级到 `0.2.0-next.0`，用于 npm `next` dist-tag；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`。
+- 版本号定为 `0.2.0`（原 `next` 预览版转正式）；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`。
 - 执行 `npm run build` 后需要重启一次 `dsh web`（DSH 会缓存客户端 bundle 清单直到重启）。
 
 ## 0.1.4 - 2026-11-09
