@@ -22,6 +22,9 @@
   （`--dsw-alias-label-*`、`--dsw-alias-bg-layer-*`、`--dsw-alias-border-*`、状态色），跟随 DSH 明暗主题。
 - 设置按卡片分组：插件版本、隧道与配对（隧道/代理开关、会话时长、配对 TTL）、微信（通道 + 完成通知策略：
   合并窗口、单会话冷却、全局间隔、每小时上限）、日志。微信设置使用仅本机接口 `read/weixin` 与 `POST admin/weixin`。
+- 新增「安全与维护」卡片：密钥状态与轮换（`read/keys`、`POST admin/key/rotate`）、OAuth 身份白名单编辑
+  （`read/oauth`、`POST admin/oauth`，持久化到 `admin-settings.json`）、审计日志 JSON 导出（`read/audit`）。
+  全部接口仍仅限本机。
 - 布局遵循 DSH 主面板页面契约：标题与页签固定，只有页签内容滚动；表格与日志按需保持单行。
 - 版本号升级到 `0.2.0-next.0`，用于 npm `next` dist-tag；`engines.dsh` 继续精确锁定 `0.2.2-rc.1`。
 - 执行 `npm run build` 后需要重启一次 `dsh web`（DSH 会缓存客户端 bundle 清单直到重启）。

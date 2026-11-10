@@ -29,6 +29,7 @@ import type { Gateway } from '../gateway.js'
 import type { PublicDevice } from '../devices.js'
 import type { LogEntry } from '../logger.js'
 import { GatewayError } from '../errors.js'
+import { validOAuthAllowlist } from '../settings.js'
 
 /** One exact Fetch route below the DSH `/api` channel (DSH connection contract). */
 export interface WorkbenchFetchRoute {
@@ -136,6 +137,22 @@ function weixinPayload(gateway: Gateway): Record<string, unknown> {
   return {
     weixin: gateway.weixin?.status() ?? null,
     notify: gateway.weixinNotifier?.status() ?? null,
+  }
+}
+
+/** Secret-key status (active kid + retained kids). */
+function keyStatus(gateway: Gateway): Record<string, unknown> {
+  const box = gateway.secretBox
+  if (!box) return { available: false, activeKid: '', keyIds: [] }
+  return { available: true, activeKid: box.activeKid, keyIds: box.keyIds() }
+}
+
+/** OAuth providers and the identity allowlist. */
+function oauthPayload(gateway: Gateway): Record<string, unknown> {
+  return {
+    providers: gateway.oauth.enabledProviders(),
+    requireOAuth: gateway.config.auth.requireOAuth,
+    allowedUsers: [...(gateway.config.auth.oauthAllowedUsers ?? [])],
   }
 }
 
@@ -329,6 +346,71 @@ export function registerWorkbenchBridge(ctx: WorkbenchHostContext, gateway: Gate
         }
         if (!touched) return errorResponse('没有可更新的微信设置', 400, 1002)
         return json(weixinPayload(gateway))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/read/keys',
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: wrap((request) => {
+        const denied = localOnly(request)
+        if (denied) return Promise.resolve(denied)
+        return Promise.resolve(json(keyStatus(gateway)))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/key/rotate',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap((request) => {
+        const denied = localOnly(request)
+        if (denied) return Promise.resolve(denied)
+        gateway.rotateSecretKey()
+        return Promise.resolve(json(keyStatus(gateway)))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/read/audit',
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: wrap((request) => {
+        const denied = localOnly(request)
+        if (denied) return Promise.resolve(denied)
+        const params = new URL(request.url).searchParams
+        const action = params.get('action')?.trim() || undefined
+        const sinceRaw = params.get('since')
+        const sinceValue = sinceRaw === null ? NaN : /^\d+$/.test(sinceRaw) ? Number(sinceRaw) : Date.parse(sinceRaw)
+        const since = Number.isFinite(sinceValue) ? sinceValue : undefined
+        const limitRaw = Number(params.get('limit') ?? 200)
+        const limit = Number.isFinite(limitRaw) ? Math.min(500, Math.max(1, Math.floor(limitRaw))) : 200
+        return gateway.queryAudit({ action, since, limit }).then((payload) => json(payload))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/read/oauth',
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: wrap((request) => {
+        const denied = localOnly(request)
+        if (denied) return Promise.resolve(denied)
+        return Promise.resolve(json(oauthPayload(gateway)))
+      }),
+    },
+    {
+      path: '/api/gateway-mobile/admin/oauth',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: wrap(async (request) => {
+        const denied = localOnly(request)
+        if (denied) return denied
+        const body = (await request.json()) as { allowedUsers?: unknown }
+        if (!validOAuthAllowlist(body.allowedUsers)) {
+          return errorResponse('白名单条目需形如 github:login 或 gitee:login', 400, 1002)
+        }
+        const allowedUsers = body.allowedUsers.map((entry) => entry.trim())
+        gateway.config.auth.oauthAllowedUsers = allowedUsers
+        await gateway.settingsStore?.save({ oauthAllowedUsers: allowedUsers })
+        return json(oauthPayload(gateway))
       }),
     },
   ]

@@ -162,6 +162,11 @@ test('workbench bridge registers read routes plus the pairing regenerate action'
       'POST /api/gateway-mobile/admin/tunnel',
       'GET /api/gateway-mobile/read/weixin',
       'POST /api/gateway-mobile/admin/weixin',
+      'GET /api/gateway-mobile/read/keys',
+      'POST /api/gateway-mobile/admin/key/rotate',
+      'GET /api/gateway-mobile/read/audit',
+      'GET /api/gateway-mobile/read/oauth',
+      'POST /api/gateway-mobile/admin/oauth',
     ],
   )
   assert.equal(effects.length, registered.length)

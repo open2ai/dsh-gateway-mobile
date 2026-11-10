@@ -229,10 +229,13 @@ const STYLE = `
 .gwmb-kv dt { color: var(--dsw-alias-label-tertiary); }
 .gwmb-kv dd { margin: 0; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
 .gwmb-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 18px; }
+.gwmb-form-wide { grid-column: 1 / -1; }
 .gwmb-form-row { display: flex; flex-direction: column; gap: 5px; font-size: 13px; min-width: 0; }
 .gwmb-form-row > span:first-child { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 .gwmb-input { box-sizing: border-box; width: 100%; font-size: 13px; font-family: inherit; padding: 6px 9px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .gwmb-input:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
+.gwmb-textarea { box-sizing: border-box; width: 100%; min-height: 84px; resize: vertical; font-family: var(--dsw-font-markdown-code-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 12px; padding: 8px 10px; border-radius: var(--dsw-radius-md, 10px); border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
+.gwmb-textarea:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 1px; }
 `
 
 // Insert the stylesheet while the module factory is materializing: the client
@@ -870,10 +873,26 @@ function toWeixinForm(payload: WeixinView): WeixinForm {
   }
 }
 
+interface KeyView {
+  available: boolean
+  activeKid: string
+  keyIds: string[]
+}
+
+interface OAuthView {
+  providers: string[]
+  requireOAuth: boolean
+  allowedUsers: string[]
+}
+
 function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const [form, setForm] = useState<SettingsForm | null>(null)
   const [weixinForm, setWeixinForm] = useState<WeixinForm | null>(null)
   const [weixinStatus, setWeixinStatus] = useState<WeixinView | null>(null)
+  const [keys, setKeys] = useState<KeyView | null>(null)
+  const [oauth, setOAuth] = useState<OAuthView | null>(null)
+  const [oauthText, setOAuthText] = useState('')
+  const [maintenanceBusy, setMaintenanceBusy] = useState('')
   const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
   const [version, setVersion] = useState('')
   const [error, setError] = useState('')
@@ -895,6 +914,19 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       } catch {
         setWeixinStatus(null)
         setWeixinForm(null)
+      }
+      try {
+        const [keyPayload, oauthResult] = await Promise.all([
+          apiGet<KeyView>('/api/gateway-mobile/read/keys'),
+          apiGet<OAuthView>('/api/gateway-mobile/read/oauth'),
+        ])
+        setKeys(keyPayload)
+        setOAuth(oauthResult)
+        setOAuthText(oauthResult.allowedUsers.join('\n'))
+      } catch {
+        setKeys(null)
+        setOAuth(null)
+        setOAuthText('')
       }
       setError('')
       setMessage('')
@@ -959,6 +991,64 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       setError(messageOf(cause))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const rotateKey = async (): Promise<void> => {
+    if (!window.confirm('轮换密钥后，新会话将使用新密钥，旧会话仍可验证。确定继续？')) return
+    setMaintenanceBusy('key')
+    setError('')
+    setMessage('')
+    try {
+      setKeys(await apiPost<KeyView>('/api/gateway-mobile/admin/key/rotate'))
+      setMessage('密钥已轮换')
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setMaintenanceBusy('')
+    }
+  }
+
+  const saveOAuth = async (): Promise<void> => {
+    setMaintenanceBusy('oauth')
+    setError('')
+    setMessage('')
+    try {
+      const allowedUsers = oauthText
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '')
+      const next = await apiPost<OAuthView>('/api/gateway-mobile/admin/oauth', { allowedUsers })
+      setOAuth(next)
+      setOAuthText(next.allowedUsers.join('\n'))
+      setMessage('OAuth 白名单已保存')
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setMaintenanceBusy('')
+    }
+  }
+
+  const exportAudit = async (): Promise<void> => {
+    setMaintenanceBusy('audit')
+    setError('')
+    setMessage('')
+    try {
+      const payload = await apiGet<Record<string, unknown>>('/api/gateway-mobile/read/audit?limit=500')
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `gateway-mobile-audit-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+      document.body.append(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      setMessage('审计日志已导出')
+    } catch (cause) {
+      setError(messageOf(cause))
+    } finally {
+      setMaintenanceBusy('')
     }
   }
 
@@ -1143,6 +1233,77 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
         </div>
       </section>
 
+      <section className="gwmb-card">
+        <h3>安全与维护</h3>
+        <div className="gwmb-form">
+          <div className="gwmb-form-row">
+            <span>密钥</span>
+            <div className="gwmb-meta">
+              {keys?.available
+                ? `活动 ${keys.activeKid || '—'} · 全部 ${keys.keyIds.join(', ') || '—'}`
+                : '密钥状态不可用'}
+            </div>
+            <div className="gwmb-actions">
+              <button
+                className="gwmb-btn"
+                type="button"
+                disabled={maintenanceBusy !== '' || !keys?.available}
+                onClick={() => void rotateKey()}
+              >
+                {maintenanceBusy === 'key' ? '轮换中…' : '轮换密钥'}
+              </button>
+            </div>
+          </div>
+
+          <div className="gwmb-form-row gwmb-form-wide">
+            <span>OAuth 白名单</span>
+            <textarea
+              className="gwmb-textarea"
+              rows={3}
+              value={oauthText}
+              placeholder={'github:your-login\ngitee:your-login'}
+              onChange={(event) => {
+                setOAuthText(event.target.value)
+                setMessage('')
+              }}
+            />
+            <span className="gwmb-meta gwmb-muted">
+              每行一条 `github:login` 或 `gitee:login`；留空表示不限制，仅影响之后绑定的身份。
+            </span>
+            <div className="gwmb-actions">
+              <button
+                className="gwmb-btn"
+                type="button"
+                disabled={maintenanceBusy !== '' || oauth === null}
+                onClick={() => void saveOAuth()}
+              >
+                {maintenanceBusy === 'oauth' ? '保存中…' : '保存白名单'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="gwmb-meta">
+          {oauth
+            ? `已启用 provider：${oauth.providers.join(', ') || '无'}${oauth.requireOAuth ? ' · 强制绑定' : ''}`
+            : 'OAuth 状态不可用'}
+        </div>
+
+        <div className="gwmb-actions">
+          <button
+            className="gwmb-btn"
+            type="button"
+            disabled={maintenanceBusy !== ''}
+            onClick={() => void exportAudit()}
+          >
+            {maintenanceBusy === 'audit' ? '导出中…' : '导出审计日志（JSON）'}
+          </button>
+        </div>
+        <div className="gwmb-meta gwmb-muted">
+          审计导出包含最近的运行与审计记录；微信扫码登录与审批历史仍在独立管理台。
+        </div>
+      </section>
+
       <div className="gwmb-actions">
         <button className="gwmb-btn gwmb-btn-primary" type="button" disabled={saving} onClick={() => void save()}>
           {saving ? '保存中…' : '保存设置'}
@@ -1156,8 +1317,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       {error ? <div className="gwmb-meta gwmb-bad">{error}</div> : null}
 
       <div className="gwmb-meta gwmb-muted">
-        修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。密钥轮换、审计导出、OAuth
-        白名单等高级维护仍在独立管理台完成。
+        修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。微信扫码登录、审批历史与设备撤销仍在独立管理台完成。
       </div>
     </>
   )

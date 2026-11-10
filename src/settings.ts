@@ -36,12 +36,18 @@ export interface RuntimeSettings {
   proxyRequestTimeoutMs?: number
 }
 
-export type StoredSettings = AuthSettings & RuntimeSettings
+/** OAuth identity allowlist (`provider:loginOrId`, empty = no restriction). */
+export interface OAuthSettings {
+  oauthAllowedUsers?: string[]
+}
+
+export type StoredSettings = AuthSettings & RuntimeSettings & OAuthSettings
 
 export interface SettingsConfig {
   auth: {
     sessionMaxAge: number
     pairingTokenExpiry: number
+    oauthAllowedUsers: string[]
   }
   tunnel: {
     enabled: boolean
@@ -73,6 +79,16 @@ export function validProxyTimeout(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= PROXY_TIMEOUT_MIN && Number(value) <= PROXY_TIMEOUT_MAX
 }
 
+const OAUTH_ALLOW_ENTRY = /^(github|gitee):[^\s:]+$/i
+
+/** `provider:loginOrId` entries; an empty array means "no restriction". */
+export function validOAuthAllowlist(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((entry) => typeof entry === 'string' && OAUTH_ALLOW_ENTRY.test(entry.trim()))
+  )
+}
+
 export class SettingsStore {
   file: string
   logger: LoggerLike | undefined
@@ -100,6 +116,9 @@ export class SettingsStore {
       if (validProxyTimeout(parsed.proxyRequestTimeoutMs)) {
         this.values.proxyRequestTimeoutMs = parsed.proxyRequestTimeoutMs
       }
+      if (validOAuthAllowlist(parsed.oauthAllowedUsers)) {
+        this.values.oauthAllowedUsers = parsed.oauthAllowedUsers.map((entry) => entry.trim())
+      }
       return { ...this.values }
     } catch {
       return {}
@@ -115,6 +134,9 @@ export class SettingsStore {
     if (this.values.logLevel !== undefined) config.log.level = this.values.logLevel
     if (this.values.proxyRequestTimeoutMs !== undefined) {
       config.proxy.requestTimeoutMs = this.values.proxyRequestTimeoutMs
+    }
+    if (this.values.oauthAllowedUsers !== undefined) {
+      config.auth.oauthAllowedUsers = [...this.values.oauthAllowedUsers]
     }
   }
 
