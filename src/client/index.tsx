@@ -172,6 +172,8 @@ const STYLE = `
 .gwmb-tunnel-actions .gwmb-btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; font-size: 12px; line-height: 1.4; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
 .gwmb-tunnel-btn { min-height: 34px; color: var(--dsw-alias-label-secondary); }
 .gwmb-tunnel-btn:hover:not(:disabled) { color: var(--dsw-alias-label-primary); }
+.gwmb-tunnel-btn-danger { color: var(--dsw-alias-state-error-primary); }
+.gwmb-tunnel-btn-danger:hover:not(:disabled) { color: var(--dsw-alias-state-error-primary); filter: brightness(1.12); }
 .gwmb-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--dsw-alias-border-l1); padding-bottom: 6px; }
 .gwmb-tab { appearance: none; border: 0; background: transparent; color: var(--dsw-alias-label-secondary); font-size: 14px; padding: 7px 12px; border-radius: var(--dsw-radius-md, 10px); cursor: pointer; }
 .gwmb-tab:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -525,7 +527,7 @@ function OverviewTab(props: {
                 <PlayIcon />
               </button>
               <button
-                className="gwmb-btn gwmb-tunnel-btn"
+                className="gwmb-btn gwmb-tunnel-btn gwmb-tunnel-btn-danger"
                 type="button"
                 title="停止隧道"
                 aria-label="停止隧道"
