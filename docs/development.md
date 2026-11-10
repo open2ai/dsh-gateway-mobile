@@ -116,3 +116,22 @@ on Windows); set `KEEP=1` to keep the temporary DSH home for inspection.
 Both scripts are optional developer tooling; they are not part of `npm test`. A missing
 cloudflared binary or a stopped gateway is reported as ⚠ rather than ❌ so `doctor` stays
 usable before the first start.
+
+## Release tagging
+
+Version tags always carry a `v` prefix (`v0.2.0`, `v0.2.1`, …), matching the existing
+`v0.1.x` tags; `package.json` keeps the bare version (`0.2.0`). A tag must point at the
+commit `main` carries, so push `main` first and create the tag from `origin/main`.
+
+```powershell
+git push origin next:main
+git fetch origin
+git tag -a v0.2.1 -m 'dsh-gateway-mobile 0.2.1' origin/main
+git push origin refs/tags/v0.2.1
+```
+
+Release a new version by bumping `package.json` (and `package-lock.json`), the CHANGELOG
+heading, the README status line and the version examples in `docs/api.md` /
+`docs/architecture-flow*.md`, then running `npm test` and `npm run check-docs` before
+creating the tag.
+

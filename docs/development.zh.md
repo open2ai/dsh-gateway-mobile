@@ -106,3 +106,21 @@ node scripts/hmr-check.mjs
 
 这两个脚本是可选的开发工具，不属于 `npm test`。缺少 cloudflared 或网关未启动会报告为 ⚠
 而不是 ❌，以便 `doctor` 在第一次启动前也能使用。
+
+## 发版 tag
+
+版本 tag 一律带 `v` 前缀（`v0.2.0`、`v0.2.1`…），与既有的 `v0.1.x` 保持一致；
+`package.json` 里仍写不带前缀的版本号（`0.2.0`）。tag 必须指向 `main` 所在的提交，
+所以先把 `main` 推上去，再从 `origin/main` 打 tag。
+
+```powershell
+git push origin next:main
+git fetch origin
+git tag -a v0.2.1 -m 'dsh-gateway-mobile 0.2.1' origin/main
+git push origin refs/tags/v0.2.1
+```
+
+发新版时先把 `package.json`（含 `package-lock.json`）、CHANGELOG 标题、README 状态行以及
+`docs/api.md` / `docs/architecture-flow*.md` 里的版本示例改好，跑过 `npm test` 与
+`npm run check-docs` 之后再打 tag。
+
