@@ -1149,8 +1149,9 @@ function LogsTab(): ReactElement {
     try {
       const dayMs = 86_400_000
       const rangeMs = exportRange === '24h' ? dayMs : exportRange === '7d' ? 7 * dayMs : 0
-      const sinceQuery = rangeMs > 0 ? `&since=${Date.now() - rangeMs}` : ''
-      const payload = await apiGet<Record<string, unknown>>(`/api/gateway-mobile/read/audit?limit=500${sinceQuery}`)
+      // Time windows export every matching entry; "all" keeps the 500-entry cap.
+      const query = rangeMs > 0 ? `?since=${Date.now() - rangeMs}` : '?limit=500'
+      const payload = await apiGet<Record<string, unknown>>(`/api/gateway-mobile/read/audit${query}`)
       const rangeLabel = exportRange === '24h' ? '24h' : exportRange === '7d' ? '7d' : 'all'
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
@@ -1208,8 +1209,8 @@ function LogsTab(): ReactElement {
             aria-label="审计导出范围"
             onChange={(event) => setExportRange(event.target.value as '24h' | '7d' | 'all')}
           >
-            <option value="24h">最近 24 小时</option>
-            <option value="7d">最近 7 天</option>
+            <option value="24h">最近 24 小时（不限条数）</option>
+            <option value="7d">最近 7 天（不限条数）</option>
             <option value="all">全部（最多 500 条）</option>
           </select>
           <button className="gwmb-btn gwmb-btn-sm" type="button" disabled={exporting} onClick={() => void exportAudit()}>
