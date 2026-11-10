@@ -343,6 +343,9 @@ const STYLE = `
 .gwmb-switch-on .gwmb-switch-knob { transform: translateX(16px); background: var(--dsw-alias-label-primary-foreground); }
 .gwmb-switch:disabled { opacity: .45; cursor: default; }
 .gwmb-switch:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-link)); outline-offset: 2px; }
+.gwmb-radio-group { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; min-height: 32px; }
+.gwmb-radio { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--dsw-alias-label-primary); cursor: pointer; }
+.gwmb-radio input[type="radio"] { width: 15px; height: 15px; margin: 0; accent-color: var(--dsw-alias-button-primary-fill); cursor: pointer; }
 `
 
 // Insert the stylesheet while the module factory is materializing: the client
@@ -2281,19 +2284,31 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
 
       <section className="gwmb-card">
         <h3>独立管理台</h3>
-        <div className="gwmb-setting">
-          <span className="gwmb-setting-label">兼容模式</span>
-          <select
-            className="gwmb-select"
-            value={form.adminConsoleEnabled ? 'on' : 'off'}
-            onChange={(event) => update('adminConsoleEnabled', event.target.value === 'on')}
-          >
-            <option value="on">启用（本机可打开 /mobile/admin）</option>
-            <option value="off">禁用（只用工作台）</option>
-          </select>
-        </div>
-        <div className="gwmb-meta gwmb-muted">
-          禁用后独立页面与 /admin 跳转返回 404，回环 API 仍保留；工作台成为唯一管理入口。
+        <div className="gwmb-form-row">
+          <span>兼容模式</span>
+          <div className="gwmb-radio-group">
+            <label className="gwmb-radio">
+              <input
+                type="radio"
+                name="adminConsoleEnabled"
+                checked={form.adminConsoleEnabled}
+                onChange={() => update('adminConsoleEnabled', true)}
+              />
+              启用（本机可打开 /mobile/admin）
+            </label>
+            <label className="gwmb-radio">
+              <input
+                type="radio"
+                name="adminConsoleEnabled"
+                checked={!form.adminConsoleEnabled}
+                onChange={() => update('adminConsoleEnabled', false)}
+              />
+              禁用（只用工作台）
+            </label>
+          </div>
+          <span className="gwmb-meta gwmb-muted">
+            禁用后独立页面与 /admin 跳转返回 404，回环 API 仍保留；工作台成为唯一管理入口。
+          </span>
         </div>
       </section>
 
