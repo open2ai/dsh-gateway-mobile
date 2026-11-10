@@ -699,6 +699,22 @@ function EyeOffIcon(props: { size?: number }): ReactElement {
   )
 }
 
+interface PairingSettingsForm {
+  tunnelEnabled: boolean
+  proxyTimeoutMs: string
+  sessionDays: string
+  pairingMinutes: string
+}
+
+function toPairingSettingsForm(view: SettingsView): PairingSettingsForm {
+  return {
+    tunnelEnabled: view.runtime?.tunnelEnabled !== false,
+    proxyTimeoutMs: view.runtime?.proxyRequestTimeoutMs ? String(view.runtime.proxyRequestTimeoutMs) : '',
+    sessionDays: view.sessionMaxAge ? String(Math.round(view.sessionMaxAge / 86400)) : '1',
+    pairingMinutes: view.pairingTokenExpiry ? String(Math.round(view.pairingTokenExpiry / 60)) : '15',
+  }
+}
+
 function PairingTab(): ReactElement {
   const [data, setData] = useState<PairingView | null>(null)
   const [error, setError] = useState('')
@@ -709,6 +725,22 @@ function PairingTab(): ReactElement {
   const [showPairingLink, setShowPairingLink] = useState(false)
   const [showCode, setShowCode] = useState(false)
   const [dismissedUrlChangedAt, setDismissedUrlChangedAt] = useState<number | null>(null)
+  const [settings, setSettings] = useState<PairingSettingsForm | null>(null)
+  const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
+  const [settingsBusy, setSettingsBusy] = useState(false)
+  const [settingsMessage, setSettingsMessage] = useState('')
+  const [settingsError, setSettingsError] = useState('')
+
+  const loadSettings = useCallback(async (): Promise<void> => {
+    try {
+      const view = await apiGet<SettingsView>('/api/gateway-mobile/read/settings')
+      setSettings(toPairingSettingsForm(view))
+      setLimits(view.limits)
+      setSettingsError('')
+    } catch (cause) {
+      setSettingsError(messageOf(cause))
+    }
+  }, [])
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -721,9 +753,10 @@ function PairingTab(): ReactElement {
 
   useEffect(() => {
     void load()
+    void loadSettings()
     const timer = window.setInterval(() => setTick(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [load])
+  }, [load, loadSettings])
 
   const remaining = data ? Math.max(0, Math.round((Date.parse(data.expiresAt) - tick) / 1000)) : 0
 
@@ -748,6 +781,36 @@ function PairingTab(): ReactElement {
       window.setTimeout(() => setCopied(false), 1500)
     } catch {
       setCopied(false)
+    }
+  }
+
+  const updateSetting = <K extends keyof PairingSettingsForm,>(key: K, value: PairingSettingsForm[K]): void => {
+    setSettings((current) => (current === null ? current : { ...current, [key]: value }))
+    setSettingsMessage('')
+  }
+
+  const saveSettings = async (): Promise<void> => {
+    if (!settings) return
+    setSettingsBusy(true)
+    setSettingsMessage('')
+    setSettingsError('')
+    try {
+      const patch: Record<string, unknown> = {
+        tunnelEnabled: settings.tunnelEnabled,
+        sessionMaxAge: Math.round(Number(settings.sessionDays) * 86400),
+        pairingTokenExpiry: Math.round(Number(settings.pairingMinutes) * 60),
+      }
+      if (settings.proxyTimeoutMs.trim() !== '') {
+        patch.proxyRequestTimeoutMs = Math.round(Number(settings.proxyTimeoutMs))
+      }
+      const view = await apiPost<SettingsView>('/api/gateway-mobile/admin/settings', patch)
+      setSettings(toPairingSettingsForm(view))
+      setLimits(view.limits)
+      setSettingsMessage('设置已保存并生效')
+    } catch (cause) {
+      setSettingsError(messageOf(cause))
+    } finally {
+      setSettingsBusy(false)
     }
   }
 
@@ -893,6 +956,80 @@ function PairingTab(): ReactElement {
           ) : null}
         </section>
       </div>
+
+      <section className="gwmb-card">
+        <h3>隧道与配对设置</h3>
+        {settings ? (
+          <div className="gwmb-form">
+            <label className="gwmb-form-row">
+              <span>隧道开关</span>
+              <select
+                className="gwmb-select"
+                value={settings.tunnelEnabled ? 'on' : 'off'}
+                onChange={(event) => updateSetting('tunnelEnabled', event.target.value === 'on')}
+              >
+                <option value="on">启用（Quick/Named Tunnel）</option>
+                <option value="off">关闭（仅本机访问）</option>
+              </select>
+            </label>
+            <label className="gwmb-form-row">
+              <span>DSH 代理超时（毫秒）</span>
+              <input
+                className="gwmb-input"
+                type="number"
+                min="1000"
+                placeholder="留空使用默认值"
+                value={settings.proxyTimeoutMs}
+                onChange={(event) => updateSetting('proxyTimeoutMs', event.target.value)}
+              />
+            </label>
+            <label className="gwmb-form-row">
+              <span>设备会话时长（天）</span>
+              <input
+                className="gwmb-input"
+                type="number"
+                min="1"
+                value={settings.sessionDays}
+                onChange={(event) => updateSetting('sessionDays', event.target.value)}
+              />
+              <span className="gwmb-meta gwmb-muted">
+                最短约 5 分钟，最长 {limits?.sessionMax ? Math.round(limits.sessionMax / 86400) : 90} 天
+              </span>
+            </label>
+            <label className="gwmb-form-row">
+              <span>配对码有效期（分钟）</span>
+              <input
+                className="gwmb-input"
+                type="number"
+                min="1"
+                value={settings.pairingMinutes}
+                onChange={(event) => updateSetting('pairingMinutes', event.target.value)}
+              />
+              <span className="gwmb-meta gwmb-muted">
+                {limits?.pairingMin ? Math.max(1, Math.round(limits.pairingMin / 60)) : 1}–
+                {limits?.pairingMax ? Math.round(limits.pairingMax / 60) : 1440} 分钟
+              </span>
+            </label>
+          </div>
+        ) : (
+          <div className="gwmb-meta">正在读取设置…</div>
+        )}
+        <div className="gwmb-actions">
+          <button
+            className="gwmb-btn gwmb-btn-primary"
+            type="button"
+            disabled={settingsBusy || settings === null}
+            onClick={() => void saveSettings()}
+          >
+            {settingsBusy ? '保存中…' : '保存设置'}
+          </button>
+        </div>
+        {settingsMessage ? <div className="gwmb-meta gwmb-ok">{settingsMessage}</div> : null}
+        {settingsError ? <div className="gwmb-meta gwmb-bad">{settingsError}</div> : null}
+        <div className="gwmb-meta gwmb-muted">
+          修改立即生效并持久化，无需重启 DSH；配对码有效期仅影响之后生成的配对码。
+        </div>
+      </section>
     </>
   )
 }
@@ -1798,23 +1935,13 @@ function WeixinTab(): ReactElement {
 }
 
 interface SettingsForm {
-  sessionDays: string
-  pairingMinutes: string
-  tunnelEnabled: boolean
-  weixinEnabled: boolean
   logLevel: string
-  proxyTimeoutMs: string
   adminConsoleEnabled: boolean
 }
 
 function toSettingsForm(settings: SettingsView): SettingsForm {
   return {
-    sessionDays: settings.sessionMaxAge ? String(Math.round(settings.sessionMaxAge / 86400)) : '1',
-    pairingMinutes: settings.pairingTokenExpiry ? String(Math.round(settings.pairingTokenExpiry / 60)) : '15',
-    tunnelEnabled: settings.runtime?.tunnelEnabled !== false,
-    weixinEnabled: settings.runtime?.weixinEnabled !== false,
     logLevel: settings.runtime?.logLevel ?? 'info',
-    proxyTimeoutMs: settings.runtime?.proxyRequestTimeoutMs ? String(settings.runtime.proxyRequestTimeoutMs) : '',
     adminConsoleEnabled: settings.adminConsoleEnabled !== false,
   }
 }
@@ -1885,16 +2012,11 @@ interface WeixinLoginView {
 
 function SettingsTab(props: { pluginVersion: string }): ReactElement {
   const [form, setForm] = useState<SettingsForm | null>(null)
-  const [weixinForm, setWeixinForm] = useState<WeixinForm | null>(null)
-  const [weixinStatus, setWeixinStatus] = useState<WeixinView | null>(null)
   const [keys, setKeys] = useState<KeyView | null>(null)
   const [oauth, setOAuth] = useState<OAuthView | null>(null)
   const [oauthText, setOAuthText] = useState('')
   const [maintenanceBusy, setMaintenanceBusy] = useState('')
-  const [loginStatus, setLoginStatus] = useState<WeixinLoginView | null>(null)
-  const [loginBusy, setLoginBusy] = useState(false)
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
-  const [limits, setLimits] = useState<SettingsView['limits']>(undefined)
   const [version, setVersion] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -1904,7 +2026,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     try {
       const settingsPayload = await apiGet<SettingsView>('/api/gateway-mobile/read/settings')
       setForm(toSettingsForm(settingsPayload))
-      setLimits(settingsPayload.limits)
       setVersion(settingsPayload.version ?? '')
       try {
         const [keyPayload, oauthResult] = await Promise.all([
@@ -1935,11 +2056,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     setMessage('')
   }
 
-  const updateWeixin = <K extends keyof WeixinForm,>(key: K, value: WeixinForm[K]): void => {
-    setWeixinForm((current) => (current === null ? current : { ...current, [key]: value }))
-    setMessage('')
-  }
-
   const save = async (): Promise<void> => {
     if (!form) return
     setSaving(true)
@@ -1947,19 +2063,11 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     setMessage('')
     try {
       const patch: Record<string, unknown> = {
-        sessionMaxAge: Math.round(Number(form.sessionDays) * 86400),
-        pairingTokenExpiry: Math.round(Number(form.pairingMinutes) * 60),
-        tunnelEnabled: form.tunnelEnabled,
-        weixinEnabled: form.weixinEnabled,
         logLevel: form.logLevel,
         adminConsoleEnabled: form.adminConsoleEnabled,
       }
-      if (form.proxyTimeoutMs.trim() !== '') {
-        patch.proxyRequestTimeoutMs = Math.round(Number(form.proxyTimeoutMs))
-      }
       const payload = await apiPost<SettingsView>('/api/gateway-mobile/admin/settings', patch)
       setForm(toSettingsForm(payload))
-      setLimits(payload.limits)
       setVersion(payload.version ?? version)
       setMessage('设置已保存并生效')
     } catch (cause) {
@@ -2013,67 +2121,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
     }
   }
 
-  const startWeixinLogin = async (): Promise<void> => {
-    setLoginBusy(true)
-    setError('')
-    setMessage('')
-    try {
-      setLoginStatus(await apiPost<WeixinLoginView>('/api/gateway-mobile/admin/weixin/login'))
-    } catch (cause) {
-      setError(messageOf(cause))
-    } finally {
-      setLoginBusy(false)
-    }
-  }
-
-  const approveWeixinLogin = async (approve: boolean): Promise<void> => {
-    setLoginBusy(true)
-    setError('')
-    try {
-      const next = await apiPost<WeixinLoginView>('/api/gateway-mobile/admin/weixin/approve', { approve })
-      setLoginStatus(next)
-      setMessage(approve ? '已允许连接' : '已拒绝连接')
-      try {
-        setWeixinStatus(await apiGet<WeixinView>('/api/gateway-mobile/read/weixin'))
-      } catch {
-        // keep the last known channel state
-      }
-    } catch (cause) {
-      setError(messageOf(cause))
-    } finally {
-      setLoginBusy(false)
-    }
-  }
-
-  const doLogoutWeixin = async (): Promise<void> => {
-    setLoginBusy(true)
-    setError('')
-    try {
-      await apiPost('/api/gateway-mobile/admin/weixin/logout')
-      setLoginStatus(null)
-      setMessage('微信已断开')
-      try {
-        setWeixinStatus(await apiGet<WeixinView>('/api/gateway-mobile/read/weixin'))
-      } catch {
-        // keep the last known channel state
-      }
-    } catch (cause) {
-      setError(messageOf(cause))
-    } finally {
-      setLoginBusy(false)
-    }
-  }
-
-  const logoutWeixin = (): void => {
-    setConfirmState({
-      title: '断开微信连接',
-      message: '断开后需要重新扫码登录，才能继续转发审批、提问和完成通知。',
-      confirmText: '断开',
-      danger: true,
-      action: () => void doLogoutWeixin(),
-    })
-  }
-
   if (error && form === null) {
     return (
       <ErrorCard title="设置不可用">
@@ -2084,10 +2131,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
   }
   if (form === null) return <div className="gwmb-meta">正在读取设置…</div>
 
-  const sessionMinMinutes = limits?.sessionMin ? Math.round(limits.sessionMin / 60) : 5
-  const sessionMaxDays = limits?.sessionMax ? Math.round(limits.sessionMax / 86400) : 90
-  const pairingMinMinutes = limits?.pairingMin ? Math.max(1, Math.round(limits.pairingMin / 60)) : 1
-  const pairingMaxMinutes = limits?.pairingMax ? Math.round(limits.pairingMax / 60) : 1440
   const levels = ['debug', 'info', 'warn', 'error']
 
   return (
@@ -2098,59 +2141,6 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
           <span className="gwmb-inline-value">{version || props.pluginVersion || '—'}</span>
         </div>
         <div className="gwmb-meta">dsh-gateway-mobile · DSH Web UI 工作台</div>
-      </section>
-
-      <section className="gwmb-card">
-        <h3>隧道与配对</h3>
-        <div className="gwmb-form">
-          <label className="gwmb-form-row">
-            <span>隧道开关</span>
-            <select
-              className="gwmb-select"
-              value={form.tunnelEnabled ? 'on' : 'off'}
-              onChange={(event) => update('tunnelEnabled', event.target.value === 'on')}
-            >
-              <option value="on">启用（Quick/Named Tunnel）</option>
-              <option value="off">禁用（仅回环访问）</option>
-            </select>
-          </label>
-          <label className="gwmb-form-row">
-            <span>DSH 代理超时（毫秒）</span>
-            <input
-              className="gwmb-input"
-              type="number"
-              min="1000"
-              step="1000"
-              placeholder="留空使用默认值"
-              value={form.proxyTimeoutMs}
-              onChange={(event) => update('proxyTimeoutMs', event.target.value)}
-            />
-          </label>
-          <label className="gwmb-form-row">
-            <span>设备会话时长（天）</span>
-            <input
-              className="gwmb-input"
-              type="number"
-              min="1"
-              max={sessionMaxDays}
-              value={form.sessionDays}
-              onChange={(event) => update('sessionDays', event.target.value)}
-            />
-            <span className="gwmb-meta gwmb-muted">最短约 {sessionMinMinutes} 分钟，最长 {sessionMaxDays} 天</span>
-          </label>
-          <label className="gwmb-form-row">
-            <span>配对码有效期（分钟）</span>
-            <input
-              className="gwmb-input"
-              type="number"
-              min={pairingMinMinutes}
-              max={pairingMaxMinutes}
-              value={form.pairingMinutes}
-              onChange={(event) => update('pairingMinutes', event.target.value)}
-            />
-            <span className="gwmb-meta gwmb-muted">{pairingMinMinutes}–{pairingMaxMinutes} 分钟</span>
-          </label>
-        </div>
       </section>
 
       <section className="gwmb-card">
@@ -2264,7 +2254,7 @@ function SettingsTab(props: { pluginVersion: string }): ReactElement {
       {confirmState ? (
         <ConfirmDialog
           state={confirmState}
-          busy={maintenanceBusy !== '' || loginBusy}
+          busy={maintenanceBusy !== ''}
           onClose={() => setConfirmState(null)}
         />
       ) : null}
